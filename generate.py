@@ -56,7 +56,12 @@ def main():
 
     # Render to PDF
     print(f"\nRendering to PDF: {output_path}")
-    html_path, pdf_path = render_to_pdf(pages, output_path, title=book.title)
+    html_path, pdf_path = render_to_pdf(
+        pages, output_path,
+        title=book.title,
+        gate_title=book.gate_title,
+        chapter_title=book.chapter_title,
+    )
     print(f"  HTML saved: {html_path}")
     print(f"  PDF saved:  {pdf_path}")
     print("\nDone!")

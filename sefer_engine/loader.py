@@ -19,6 +19,8 @@ def load_from_json(path: str) -> BookContent:
         title=meta.get("title", ""),
         subtitle=meta.get("subtitle", ""),
         author=meta.get("author", ""),
+        gate_title=meta.get("gate_title", ""),
+        chapter_title=meta.get("chapter_title", ""),
     )
 
     for sec_data in data.get("sections", []):

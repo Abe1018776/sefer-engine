@@ -20,14 +20,10 @@ from .paginator import PageLayout, BottomZone
 
 
 # ── Hebrew section-number regex ──
-# Matches one or more Hebrew letters followed by a dot at the start of a line.
-# Handles single-char (א.) and multi-char (כב., יג., etc.) Hebrew numbering.
-# Also handles optional surrounding whitespace and an optional closing paren.
 _SECTION_HEADER_RE = re.compile(
     r'^([\u05D0-\u05EA]{1,4})[.)]\s*(.*)', re.DOTALL
 )
 
-# Hebrew marker pattern: standalone marker like (כב) or כב at line start
 _MARKER_RE = re.compile(r'^\(?([\u05D0-\u05EA]{1,4})\)?\s')
 
 
@@ -37,26 +33,12 @@ def escape(text: str) -> str:
 
 
 def _render_marker(marker: str, css_class: str = "marker") -> str:
-    """Render a Hebrew marker (כב, כג, etc.) as a superscript inline label.
-
-    Args:
-        marker: The Hebrew marker text.
-        css_class: CSS class for the marker element (default "marker").
-    """
     if not marker:
         return ""
     return f'<sup class="{css_class}">{escape(marker)}</sup>'
 
 
 def render_source_blocks(sources_text: str, markers: list[str] | None = None) -> str:
-    """Render source text blocks with bold references and optional markers.
-
-    Args:
-        sources_text: Newline-separated source blocks, each optionally containing
-                      a colon-separated reference.
-        markers: Optional list of source markers (one per block) to render
-                 as superscript labels before each source.
-    """
     parts = []
     blocks = [b.strip() for b in sources_text.split("\n") if b.strip()]
     for i, block in enumerate(blocks):
@@ -79,12 +61,6 @@ def render_source_blocks(sources_text: str, markers: list[str] | None = None) ->
 
 
 def render_story_blocks(stories_text: str, markers: list[str] | None = None) -> str:
-    """Render story text blocks with optional markers.
-
-    Args:
-        stories_text: Newline-separated story blocks.
-        markers: Optional list of story markers to render as superscript labels.
-    """
     parts = []
     blocks = [b.strip() for b in stories_text.split("\n") if b.strip()]
     for i, block in enumerate(blocks):
@@ -96,14 +72,7 @@ def render_story_blocks(stories_text: str, markers: list[str] | None = None) -> 
 
 
 def render_main_text(main_text: str) -> str:
-    """Render main text with section headers detected and styled.
-
-    Detects Hebrew-numbered section headers like:
-        א. Title text
-        כב. Title text
-        יג. Title text
-        א) Title text
-    """
+    """Render main text with section headers detected and styled."""
     parts = []
     lines = main_text.split("\n")
     for line in lines:
@@ -124,11 +93,6 @@ def render_main_text(main_text: str) -> str:
 
 
 def _extract_markers(bz: BottomZone) -> tuple[list[str], list[str]]:
-    """Extract source and story markers from BottomZone text by parsing blocks.
-
-    Scans each block for a leading Hebrew marker pattern like כב or (כב).
-    Returns (source_markers, story_markers).
-    """
     source_markers: list[str] = []
     if bz.makor_text:
         for block in bz.makor_text.split("\n"):
@@ -150,42 +114,59 @@ def _extract_markers(bz: BottomZone) -> tuple[list[str], list[str]]:
     return source_markers, story_markers
 
 
+def _render_zone_title_ornament(title: str) -> str:
+    """Render a zone title with ornamental lines extending from both sides."""
+    return (
+        f'<div class="zone-title-ornament">'
+        f'<span class="ornament-line"></span>'
+        f'<span class="ornament-text">{escape(title)}</span>'
+        f'<span class="ornament-line"></span>'
+        f'</div>'
+    )
+
+
 def render_page(
     layout: PageLayout,
     book_title: str = "",
+    book_short_title: str = "",
+    gate_title: str = "",
+    chapter_title: str = "",
     section_info: str = "",
     float_height_override_mm: float | None = None,
     source_markers: list[str] | None = None,
     story_markers: list[str] | None = None,
 ) -> str:
-    """Render a single page to HTML with real L-shape snaking.
-
-    Args:
-        layout: The PageLayout decision from the paginator.
-        book_title: Optional book title for the running header.
-        section_info: Optional section info string for the running header.
-        float_height_override_mm: If provided, overrides the BottomZone's
-            computed float height. Useful when the caller has a more accurate
-            measurement of the shorter column's height.
-        source_markers: Optional list of source markers to render. If None,
-            the renderer will attempt to extract them from the BottomZone text.
-        story_markers: Optional list of story markers to render. If None,
-            the renderer will attempt to extract them from the BottomZone text.
-    """
+    """Render a single page to HTML."""
     parts = []
     parts.append(f'<div class="page" data-page="{layout.page_number}">')
 
-    # ── Running header ──
-    if book_title or section_info:
-        sec_display = section_info or (
-            ", ".join(layout.section_numbers) if layout.section_numbers else ""
-        )
-        parts.append('  <div class="running-header">')
-        if book_title:
-            parts.append(f'    <span class="header-title">{escape(book_title)}</span>')
-        if sec_display:
-            parts.append(f'    <span class="header-section">{escape(sec_display)}</span>')
-        parts.append('  </div>')
+    # ── Running header (classic sefer style) ──
+    # Layout: page_num | short_title | gate/chapter | book_title
+    sec_display = section_info or (
+        ", ".join(layout.section_numbers) if layout.section_numbers else ""
+    )
+    # Determine the center title: prefer chapter, then gate
+    center_title = chapter_title or gate_title
+
+    parts.append('  <div class="running-header">')
+    # Right side: book short title (e.g. "שפע") — in RTL this appears on the right
+    parts.append(f'    <span class="header-book-title">{escape(book_short_title or "שפע")}</span>')
+    # Center: gate or chapter title
+    if center_title:
+        parts.append(f'    <span class="header-center-title">{escape(center_title)}</span>')
+    # Left side: author/series name (e.g. "שלמה")
+    parts.append(f'    <span class="header-author-title">{escape(book_title or "")}</span>')
+    parts.append('  </div>')
+
+    # ── Section subtitle (centered below header, if first sections on page) ──
+    if layout.section_numbers and layout.main_text:
+        # Check if there's a title line embedded in the main text
+        first_line = layout.main_text.split("\n")[0].strip()
+        m = _SECTION_HEADER_RE.match(first_line)
+        if m:
+            title_text = m.group(2).strip()
+            if title_text:
+                parts.append(f'  <div class="section-subtitle">{escape(title_text)}</div>')
 
     # ── Main Text (Top Zone) ──
     if layout.main_text:
@@ -193,15 +174,11 @@ def render_page(
         parts.append(render_main_text(layout.main_text))
         parts.append('  </div>')
 
-    # ── Divider ──
-    if layout.has_divider:
-        parts.append('  <hr class="zone-divider">')
-
     # ── Bottom Zone ──
     if layout.bottom_zone:
         bz = layout.bottom_zone
 
-        # Extract markers if not provided by caller
+        # Extract markers if not provided
         src_markers = source_markers
         st_markers = story_markers
         if src_markers is None or st_markers is None:
@@ -211,137 +188,96 @@ def render_page(
             if st_markers is None:
                 st_markers = extracted_st
 
+        has_both = bz.makor_text and bz.tzinor_text
+
         if bz.layout_type in ("dual", "l_shape_makor", "l_shape_tzinor"):
-            # ═══════════════════════════════════════════
-            # REAL L-SHAPE using float technique
-            # ═══════════════════════════════════════════
-            #
-            # Strategy: one column is a FLOAT with EXPLICIT HEIGHT,
-            # the other is in normal document flow. When the float
-            # column ends (at its explicit height), the flow text
-            # wraps below it → creating the L-shape.
-            #
-            # CRITICAL: The float MUST have an explicit height in
-            # the style attribute, or the snaking will not work.
-            # The height comes from the paginator's calculations
-            # (the shorter column's height).
-
             if bz.layout_type == "l_shape_makor":
-                # Sources are longer. Stories float left, sources flow around.
-                # Float height = the shorter column (tzinor) height.
                 float_height_mm = float_height_override_mm or bz.tzinor_height_mm
-
                 parts.append('  <div class="bottom-zone l-shape l-shape-makor">')
-                # Zone titles
-                parts.append('    <div class="zone-titles">')
-                parts.append('      <span class="zone-title-right">מקור השפע</span>')
-                parts.append('      <span class="zone-title-left">ציונור השפע</span>')
+                # Ornamental zone titles
+                parts.append('    <div class="zone-titles-row">')
+                parts.append(f'      <div class="zone-title-col zone-title-col-right">{_render_zone_title_ornament("מקור השפע")}</div>')
+                parts.append(f'      <div class="zone-title-col zone-title-col-left">{_render_zone_title_ornament("צינור השפע")}</div>')
                 parts.append('    </div>')
-                # The shorter column (tzinor) is a float with EXPLICIT height
+                # Float (shorter column: tzinor)
                 parts.append(
                     f'    <div class="float-column float-left tzinor-float" '
                     f'style="height: {float_height_mm:.1f}mm">'
                 )
                 parts.append(render_story_blocks(bz.tzinor_text, st_markers))
                 parts.append('    </div>')
-                # Vertical separator between columns
                 parts.append(
                     f'    <div class="column-separator column-separator-left" '
                     f'style="height: {float_height_mm:.1f}mm"></div>'
                 )
-                # The longer column (makor) flows around the float → L-shape
                 parts.append('    <div class="flow-column makor-flow">')
                 parts.append(render_source_blocks(bz.makor_text, src_markers))
                 parts.append('    </div>')
-                # Overflow section: full-width continuation below the L
-                if bz.overflow_text:
-                    parts.append('    <div class="overflow-section">')
-                    parts.append(
-                        f'      <p class="overflow-note">המשך מקורות</p>'
-                    )
-                    parts.append('    </div>')
                 parts.append('  </div>')
 
             elif bz.layout_type == "l_shape_tzinor":
-                # Stories are longer. Sources float right, stories flow around.
-                # Float height = the shorter column (makor) height.
                 float_height_mm = float_height_override_mm or bz.makor_height_mm
-
                 parts.append('  <div class="bottom-zone l-shape l-shape-tzinor">')
-                parts.append('    <div class="zone-titles">')
-                parts.append('      <span class="zone-title-right">מקור השפע</span>')
-                parts.append('      <span class="zone-title-left">ציונור השפע</span>')
+                parts.append('    <div class="zone-titles-row">')
+                parts.append(f'      <div class="zone-title-col zone-title-col-right">{_render_zone_title_ornament("מקור השפע")}</div>')
+                parts.append(f'      <div class="zone-title-col zone-title-col-left">{_render_zone_title_ornament("צינור השפע")}</div>')
                 parts.append('    </div>')
-                # The shorter column (makor) is a float with EXPLICIT height
+                # Float (shorter column: makor)
                 parts.append(
                     f'    <div class="float-column float-right makor-float" '
                     f'style="height: {float_height_mm:.1f}mm">'
                 )
                 parts.append(render_source_blocks(bz.makor_text, src_markers))
                 parts.append('    </div>')
-                # Vertical separator between columns
                 parts.append(
                     f'    <div class="column-separator column-separator-right" '
                     f'style="height: {float_height_mm:.1f}mm"></div>'
                 )
-                # The longer column (tzinor) flows around the float → L-shape
                 parts.append('    <div class="flow-column tzinor-flow">')
                 parts.append(render_story_blocks(bz.tzinor_text, st_markers))
                 parts.append('    </div>')
-                if bz.overflow_text:
-                    parts.append('    <div class="overflow-section">')
-                    parts.append(
-                        f'      <p class="overflow-note">המשך סיפורים</p>'
-                    )
-                    parts.append('    </div>')
                 parts.append('  </div>')
 
             else:
-                # Balanced dual-zone — simple two-column flex with separator
+                # Balanced dual-zone
                 parts.append('  <div class="bottom-zone dual-balanced">')
                 parts.append('    <div class="col-makor">')
-                parts.append('      <div class="zone-title">מקור השפע</div>')
+                parts.append(f'      {_render_zone_title_ornament("מקור השפע")}')
                 parts.append(render_source_blocks(bz.makor_text, src_markers))
                 parts.append('    </div>')
                 parts.append('    <div class="col-separator"></div>')
                 parts.append('    <div class="col-tzinor">')
-                parts.append('      <div class="zone-title">ציונור השפע</div>')
+                parts.append(f'      {_render_zone_title_ornament("צינור השפע")}')
                 parts.append(render_story_blocks(bz.tzinor_text, st_markers))
                 parts.append('    </div>')
                 parts.append('  </div>')
 
         elif bz.layout_type == "makor_only":
             parts.append('  <div class="bottom-zone single-zone makor-only">')
-            parts.append('    <div class="zone-title">מקור השפע</div>')
+            parts.append(f'    {_render_zone_title_ornament("מקור השפע")}')
             parts.append(render_source_blocks(bz.makor_text, src_markers))
             parts.append('  </div>')
 
         elif bz.layout_type == "tzinor_only":
             parts.append('  <div class="bottom-zone single-zone tzinor-only">')
-            parts.append('    <div class="zone-title">ציונור השפע</div>')
+            parts.append(f'    {_render_zone_title_ornament("צינור השפע")}')
             parts.append(render_story_blocks(bz.tzinor_text, st_markers))
             parts.append('  </div>')
 
     # ── Continuation text ──
     if layout.continuation_text:
         parts.append('  <div class="continuation">')
-        # Bold the first ~50 chars
         t = layout.continuation_text
         split_at = min(50, len(t))
         parts.append(f'    <p><strong>{escape(t[:split_at])}</strong>{escape(t[split_at:])}</p>')
         parts.append('  </div>')
-
-    # ── Running footer ──
-    parts.append(f'  <div class="running-footer">')
-    parts.append(f'    <span class="footer-page">{layout.page_number}</span>')
-    parts.append(f'  </div>')
 
     parts.append('</div>')
     return "\n".join(parts)
 
 
 # ═══════════════════════════════════════════════════════════
-# CSS — The real L-shape magic is here
+# CSS
 # ═══════════════════════════════════════════════════════════
 
 PAGE_CSS = """
@@ -350,11 +286,6 @@ PAGE_CSS = """
 @page {
   size: 170mm 240mm;
   margin: 15mm 15mm 15mm 18mm;
-  @bottom-center {
-    content: counter(page, hebrew);
-    font-family: 'Frank Ruhl Libre', serif;
-    font-size: 9pt;
-  }
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -368,46 +299,50 @@ body {
   color: #1a1a1a;
   orphans: 2;
   widows: 2;
-  hyphens: auto;
-  -webkit-hyphens: auto;
 }
 
 /* ── Page ── */
 .page { page-break-after: always; }
 .page:last-child { page-break-after: auto; }
 
-/* ── Running Header ── */
+/* ═══════════════════════════════
+   RUNNING HEADER — Classic sefer style
+   ═══════════════════════════════ */
 .running-header {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   font-family: 'Frank Ruhl Libre', serif;
-  font-size: 8pt;
-  color: #666;
-  border-bottom: 0.5pt solid #ccc;
+  border-bottom: 0.75pt solid #2c3e6b;
   padding-bottom: 2mm;
-  margin-bottom: 3mm;
+  margin-bottom: 4mm;
 }
-.header-title {
+.header-book-title {
+  font-size: 16pt;
+  font-weight: 700;
+  color: #1a2744;
+  letter-spacing: 0.5pt;
+}
+.header-center-title {
+  font-size: 11pt;
   font-weight: 500;
+  color: #2c3e6b;
 }
-.header-section {
-  font-weight: 400;
-  font-style: italic;
+.header-author-title {
+  font-size: 14pt;
+  font-weight: 700;
+  color: #1a2744;
 }
 
-/* ── Running Footer ── */
-.running-footer {
+/* ── Section subtitle (centered below header) ── */
+.section-subtitle {
   text-align: center;
   font-family: 'Frank Ruhl Libre', serif;
-  font-size: 8pt;
-  color: #999;
-  margin-top: auto;
-  padding-top: 2mm;
-}
-.footer-page {
-  /* Page number displayed in the footer for HTML preview;
-     in PDF mode the @page counter takes over. */
+  font-size: 11pt;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 3mm;
+  letter-spacing: 0.3pt;
 }
 
 /* ── Main Text (Top Zone) ── */
@@ -418,35 +353,72 @@ body {
   orphans: 2;
   widows: 2;
 }
-.main-text p { margin-bottom: 0.4em; }
-.section-num { font-weight: 700; font-size: 13pt; }
-.bold-header { font-weight: 700; font-size: 12.5pt; }
+.main-text p { margin-bottom: 0.5em; }
+.section-num {
+  font-weight: 700;
+  font-size: 13pt;
+}
+.bold-header {
+  font-weight: 700;
+  font-size: 12.5pt;
+}
+
+/* First paragraph after section header: slightly larger */
+.main-text p:first-child {
+  font-size: 13pt;
+  line-height: 1.7;
+  font-weight: 500;
+}
 
 /* ── Markers (source/story superscripts) ── */
 .marker {
-  font-size: 0.7em;
+  font-size: 0.65em;
   font-weight: 700;
   color: #555;
   margin-inline-end: 2px;
   vertical-align: super;
 }
-.source-marker {
-  color: #444;
+.source-marker { color: #444; }
+.story-marker { color: #666; }
+
+/* ═══════════════════════════════════════
+   ZONE TITLE ORNAMENTS
+   Lines extending from both sides of the title
+   ═══════════════════════════════════════ */
+.zone-titles-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.4em;
+  margin-top: 0.6em;
 }
-.story-marker {
-  color: #666;
+.zone-title-col {
+  flex: 0 0 48%;
+}
+.zone-title-col-right { text-align: center; }
+.zone-title-col-left  { text-align: center; }
+
+.zone-title-ornament {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.ornament-line {
+  flex: 1;
+  height: 0;
+  border-top: 0.75pt solid #555;
+}
+.ornament-text {
+  font-family: 'Frank Ruhl Libre', serif;
+  font-weight: 700;
+  font-size: 10pt;
+  color: #1a1a1a;
+  white-space: nowrap;
+  padding: 0 4px;
 }
 
-/* ── Divider ── */
-.zone-divider {
-  border: none;
-  border-top: 1.5pt solid #333;
-  margin: 0.4em 0 0.3em 0;
-}
-
-/* ══════════════════════════════════════════
+/* ═══════════════════════════════════════
    BOTTOM ZONE — L-SHAPE via CSS floats
-   ══════════════════════════════════════════ */
+   ═══════════════════════════════════════ */
 
 .bottom-zone {
   font-family: 'David Libre', serif;
@@ -459,37 +431,13 @@ body {
 .bottom-zone p { margin-bottom: 0.35em; }
 .source-ref { font-weight: 700; }
 
-/* Zone titles row */
-.zone-titles {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 0.3em;
-  font-family: 'Frank Ruhl Libre', serif;
-  font-weight: 700;
-  font-size: 10pt;
-}
-.zone-title-right { flex: 0 0 55%; text-align: center; }
-.zone-title-left  { flex: 0 0 43%; text-align: center; }
-
-/* ── L-SHAPE: Float technique ──
-   The shorter column is a CSS float with an EXPLICIT HEIGHT.
-   The longer column's text naturally wraps around it,
-   then flows full-width below when the float ends → creating the L-shape.
-
-   CRITICAL: The float MUST have style="height: Xmm" set in the HTML.
-   Without the explicit height, the browser gives the float its natural
-   content height and the flow column has no reason to snake underneath.
-*/
-
 /* Float column (the SHORTER one) — MUST have explicit height in style attr */
 .float-column {
   width: 43%;
   padding: 0 8px;
-  /* Height is set inline via style="height: Xmm" — do NOT set height here */
-  overflow: hidden;  /* clip content that exceeds the explicit height */
+  overflow: hidden;
 }
 
-/* Float on the LEFT side (for RTL: this is the ציונור/stories side) */
 .float-column.float-left {
   float: left;
   padding-right: 8px;
@@ -498,18 +446,16 @@ body {
   line-height: 1.5;
 }
 
-/* Float on the RIGHT side (for RTL: this is the מקור/sources side) */
 .float-column.float-right {
   float: right;
   padding-left: 8px;
   margin-right: 2%;
 }
 
-/* Column separator line between the two columns in L-shape mode */
+/* Column separator line */
 .column-separator {
   width: 0;
   border-left: 0.5pt solid #999;
-  /* Height is set inline to match the float height */
 }
 .column-separator-left {
   float: left;
@@ -520,16 +466,8 @@ body {
   margin-right: 0;
 }
 
-/* Flow column (the LONGER one) — this is the text that SNAKES.
-   IMPORTANT: Do NOT set overflow:hidden here. That would create a new
-   block formatting context and PREVENT the text from flowing beside
-   the float. The whole point is that flow-column text is in normal
-   document flow so it wraps around the float, then fills full-width
-   below it once the float's explicit height ends. */
+/* Flow column — text SNAKES around the float */
 .flow-column {
-  /* Normal document flow — no overflow:hidden, no float.
-     Text fills the space next to the float,
-     then wraps full-width below it. That IS the L-shape. */
   orphans: 2;
   widows: 2;
 }
@@ -543,27 +481,7 @@ body {
   line-height: 1.5;
 }
 
-/* ── Overflow section (full-width below the L-shape) ── */
-.overflow-section {
-  clear: both;
-  width: 100%;
-  padding-top: 0.2em;
-  border-top: 0.5pt dashed #ccc;
-  margin-top: 0.2em;
-  font-size: 9pt;
-  line-height: 1.45;
-  orphans: 2;
-  widows: 2;
-}
-.overflow-note {
-  font-size: 8pt;
-  color: #888;
-  text-align: center;
-  margin-bottom: 0.2em;
-  font-family: 'Frank Ruhl Libre', serif;
-}
-
-/* ── BALANCED dual-zone (no L-shape needed) ── */
+/* ── BALANCED dual-zone ── */
 .dual-balanced {
   display: flex;
   direction: rtl;
@@ -583,13 +501,6 @@ body {
   font-size: 9.5pt;
   line-height: 1.5;
 }
-.dual-balanced .zone-title {
-  text-align: center;
-  font-weight: 700;
-  font-size: 10pt;
-  margin-bottom: 0.3em;
-  font-family: 'Frank Ruhl Libre', serif;
-}
 
 /* ── Single zone (full-width sources or stories) ── */
 .single-zone {
@@ -597,14 +508,6 @@ body {
   column-gap: 12px;
   column-rule: 0.5pt solid #ccc;
   column-fill: balance;
-}
-.single-zone .zone-title {
-  text-align: center;
-  font-weight: 700;
-  font-size: 10pt;
-  margin-bottom: 0.3em;
-  font-family: 'Frank Ruhl Libre', serif;
-  column-span: all;
 }
 
 /* ── Continuation text ── */
@@ -624,17 +527,38 @@ body {
   clear: both;
 }
 
-/* ── L-shape container needs relative positioning for separator ── */
 .l-shape {
   position: relative;
 }
 """
 
 
-def render_book(pages: list[PageLayout], title: str = "") -> str:
+def render_book(
+    pages: list[PageLayout],
+    title: str = "",
+    gate_title: str = "",
+    chapter_title: str = "",
+) -> str:
     """Render the complete book to a full HTML document."""
+    # Extract short title (first word) and full title
+    # e.g. "שפע שלמה" → short="שפע", full="שלמה"
+    title_parts = title.split() if title else []
+    if len(title_parts) >= 2:
+        short_title = title_parts[0]   # "שפע"
+        author_title = title_parts[1]  # "שלמה"
+    else:
+        short_title = title
+        author_title = ""
+
     page_html = "\n\n".join(
-        render_page(p, book_title=title) for p in pages
+        render_page(
+            p,
+            book_title=author_title,
+            book_short_title=short_title,
+            gate_title=gate_title,
+            chapter_title=chapter_title,
+        )
+        for p in pages
     )
 
     return f"""<!DOCTYPE html>
@@ -652,20 +576,26 @@ def render_book(pages: list[PageLayout], title: str = "") -> str:
 </html>"""
 
 
-def render_to_html(pages: list[PageLayout], title: str = "") -> str:
-    """Render pages to an HTML string (for web preview).
+def render_to_html(
+    pages: list[PageLayout],
+    title: str = "",
+    gate_title: str = "",
+    chapter_title: str = "",
+) -> str:
+    return render_book(pages, title, gate_title, chapter_title)
 
-    Returns the full HTML document as a string, without writing to disk
-    or converting to PDF. Useful for serving in a web preview context.
-    """
-    return render_book(pages, title)
 
-
-def render_to_pdf(pages: list[PageLayout], output_path: str, title: str = ""):
+def render_to_pdf(
+    pages: list[PageLayout],
+    output_path: str,
+    title: str = "",
+    gate_title: str = "",
+    chapter_title: str = "",
+):
     """Render pages to PDF via WeasyPrint."""
     from weasyprint import HTML
 
-    html_content = render_book(pages, title)
+    html_content = render_book(pages, title, gate_title, chapter_title)
 
     html_path = output_path.replace(".pdf", ".html")
     Path(html_path).write_text(html_content, encoding="utf-8")

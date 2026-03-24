@@ -92,6 +92,8 @@ class BookContent:
     title: str
     subtitle: str
     author: str
+    gate_title: str = ""       # e.g. "שער גמילות חסדים"
+    chapter_title: str = ""    # e.g. "פרק א"
     sections: list[Section] = field(default_factory=list)
 
 
