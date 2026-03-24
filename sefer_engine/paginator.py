@@ -447,18 +447,31 @@ class Paginator:
             return Paginator._BottomResult(zone=zone, continuation_placed=cont_placed)
 
         else:
-            # Content exceeds page — fit what we can.
-            # For the PoC, we just let CSS handle the overflow via page breaks.
-            # Mark everything as placed (no carry-over for now).
+            # Content exceeds available height.
+            # Still detect L-shape — let CSS/WeasyPrint handle pagination.
+            height_diff = abs(makor_h - tzinor_h)
+
+            if not stories:
+                layout_type = "makor_only"
+            elif not sources:
+                layout_type = "tzinor_only"
+            elif height_diff < 10:
+                layout_type = "dual"
+            elif makor_h > tzinor_h:
+                layout_type = "l_shape_makor"
+            else:
+                layout_type = "l_shape_tzinor"
+
             zone = BottomZone(
-                layout_type="dual" if stories else "makor_only",
+                layout_type=layout_type,
                 makor_text=makor_text,
                 tzinor_text=tzinor_text,
-                makor_height_mm=min(makor_h, available_height),
-                tzinor_height_mm=min(tzinor_h, available_height),
+                makor_height_mm=makor_h,
+                tzinor_height_mm=tzinor_h,
+                overflow_height_mm=height_diff * 0.7,  # estimate
             )
             return Paginator._BottomResult(
                 zone=zone,
-                remaining_sources=[],  # let CSS paginate the overflow
+                remaining_sources=[],
                 remaining_stories=[],
             )
