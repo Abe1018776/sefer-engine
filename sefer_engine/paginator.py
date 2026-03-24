@@ -11,6 +11,7 @@ linked by markers, and decides how to compose each page:
 This is the algorithm that Tag's typographer does manually.
 """
 
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -43,6 +44,16 @@ class PageConfig:
     source_chars_per_line: int = 50             # narrower column, smaller font
     story_chars_per_line: int = 45
     full_width_chars_per_line: int = 75
+
+    # Dynamic main text budget range (fraction of usable height)
+    min_main_ratio: float = 0.20
+    max_main_ratio: float = 0.60
+
+    # L-shape threshold: height difference in mm before triggering L-shape
+    l_shape_threshold_mm: float = 10.0
+
+    # Density factor for Hebrew text estimation (>1.0 = more conservative)
+    density_factor: float = 1.05
 
     @property
     def usable_height_mm(self) -> float:
@@ -92,13 +103,17 @@ class BottomZone:
     layout_type: str  # "dual", "makor_only", "tzinor_only", "l_shape_makor", "l_shape_tzinor", "none"
     makor_text: str = ""
     tzinor_text: str = ""
-    overflow_text: str = ""  # full-width overflow for L-shape
+    overflow_text: str = ""  # the actual overflow text for L-shape (not repeated full text)
     makor_height_mm: float = 0.0
     tzinor_height_mm: float = 0.0
     overflow_height_mm: float = 0.0
 
     @property
     def total_height_mm(self) -> float:
+        if self.layout_type in ("l_shape_makor", "l_shape_tzinor"):
+            # For L-shape: shorter column height + overflow
+            shorter = min(self.makor_height_mm, self.tzinor_height_mm)
+            return shorter + self.overflow_height_mm
         col_height = max(self.makor_height_mm, self.tzinor_height_mm)
         return col_height + self.overflow_height_mm
 
@@ -125,29 +140,201 @@ class PageLayout:
         return h
 
 
+# ── Hebrew text utilities ──
+
+# Nikud (vowel marks) don't occupy horizontal space
+_NIKKUD_RE = re.compile(r'[\u05B0-\u05BD\u05BF\u05C1\u05C2\u05C4\u05C5\u05C7]')
+# Hebrew final letters tend to be wider
+_FINAL_LETTERS = set("ךםןףץ")
+
+
+def _effective_char_count(word: str) -> int:
+    """Count the effective display width of a Hebrew word.
+
+    - Strips nikkud (vowel marks) as they don't take horizontal space
+    - Counts final letters as slightly wider (1.15x)
+    """
+    stripped = _NIKKUD_RE.sub("", word)
+    count = 0
+    for ch in stripped:
+        if ch in _FINAL_LETTERS:
+            count += 1.15
+        else:
+            count += 1
+    return max(int(count + 0.5), 1)
+
+
 # ── Text Measurement ──
 
-def estimate_lines(text: str, chars_per_line: int) -> int:
-    """Estimate how many typeset lines a Hebrew text block will take."""
+def estimate_lines(text: str, chars_per_line: int, density_factor: float = 1.0) -> int:
+    """Estimate how many typeset lines a Hebrew text block will take.
+
+    Args:
+        text: The text to measure.
+        chars_per_line: Estimated characters per line for the target column width.
+        density_factor: Multiplier for conservative estimation (>1.0 = more lines).
+    """
     if not text.strip():
         return 0
-    # Simple word-wrap estimation
+
+    effective_cpl = max(1, int(chars_per_line / density_factor))
     words = text.split()
     lines = 1
     current_line_len = 0
+
     for word in words:
-        word_len = len(word) + 1  # +1 for space
-        if current_line_len + word_len > chars_per_line:
+        word_len = _effective_char_count(word) + 1  # +1 for space
+        if current_line_len + word_len > effective_cpl:
             lines += 1
             current_line_len = word_len
         else:
             current_line_len += word_len
+
     return max(lines, 1)
 
 
-def text_height_mm(text: str, chars_per_line: int, line_height_mm: float) -> float:
+def text_height_mm(text: str, chars_per_line: int, line_height_mm: float,
+                   density_factor: float = 1.0) -> float:
     """Estimate the height in mm of a text block."""
-    return estimate_lines(text, chars_per_line) * line_height_mm
+    return estimate_lines(text, chars_per_line, density_factor) * line_height_mm
+
+
+# ── Text Splitting ──
+
+_SENTENCE_END_RE = re.compile(r'[.!?:]\s+')
+
+
+def split_text_at_height(
+    text: str,
+    target_height_mm: float,
+    chars_per_line: int,
+    line_height_mm: float,
+    density_factor: float = 1.0,
+) -> tuple[str, str]:
+    """Split text into (fits, remainder) at approximately the target height.
+
+    Splits at the nearest sentence boundary to avoid mid-sentence breaks.
+    Returns (text_that_fits, remaining_text).
+    """
+    if not text.strip():
+        return "", ""
+
+    total_h = text_height_mm(text, chars_per_line, line_height_mm, density_factor)
+    if total_h <= target_height_mm:
+        return text, ""
+
+    # Target number of lines that fit
+    target_lines = max(1, int(target_height_mm / line_height_mm))
+
+    # Find sentence boundaries
+    boundaries = []
+    for m in _SENTENCE_END_RE.finditer(text):
+        boundaries.append(m.end())
+
+    if not boundaries:
+        # No sentence boundaries — split at word boundary
+        words = text.split()
+        effective_cpl = max(1, int(chars_per_line / density_factor))
+        lines = 0
+        current_len = 0
+        split_word_idx = len(words)
+
+        for i, word in enumerate(words):
+            wl = _effective_char_count(word) + 1
+            if current_len + wl > effective_cpl:
+                lines += 1
+                current_len = wl
+                if lines >= target_lines:
+                    split_word_idx = i
+                    break
+            else:
+                current_len += wl
+
+        fits = " ".join(words[:split_word_idx])
+        remainder = " ".join(words[split_word_idx:])
+        return fits.strip(), remainder.strip()
+
+    # Find the boundary closest to the target height
+    best_boundary = 0
+    for boundary in boundaries:
+        prefix = text[:boundary]
+        prefix_h = text_height_mm(prefix, chars_per_line, line_height_mm, density_factor)
+        if prefix_h <= target_height_mm:
+            best_boundary = boundary
+        else:
+            break
+
+    if best_boundary == 0:
+        # Even the first sentence is too tall — use it anyway
+        best_boundary = boundaries[0] if boundaries else len(text)
+
+    fits = text[:best_boundary].strip()
+    remainder = text[best_boundary:].strip()
+    return fits, remainder
+
+
+def split_sources_at_height(
+    sources: list['SourceEntry'],
+    target_height_mm: float,
+    chars_per_line: int,
+    line_height_mm: float,
+    density_factor: float = 1.0,
+) -> tuple[list['SourceEntry'], list['SourceEntry']]:
+    """Split a list of source entries to fit within target height.
+
+    Returns (sources_that_fit, remaining_sources).
+    Splits at source boundaries (won't break mid-source).
+    """
+    if not sources:
+        return [], []
+
+    fits = []
+    remaining = []
+    used_height = 0.0
+
+    for i, src in enumerate(sources):
+        src_text = f"{src.ref}: {src.text}"
+        src_h = text_height_mm(src_text, chars_per_line, line_height_mm, density_factor)
+
+        if used_height + src_h <= target_height_mm or not fits:
+            fits.append(src)
+            used_height += src_h
+        else:
+            remaining = sources[i:]
+            break
+
+    return fits, remaining
+
+
+def split_stories_at_height(
+    stories: list['StoryEntry'],
+    target_height_mm: float,
+    chars_per_line: int,
+    line_height_mm: float,
+    density_factor: float = 1.0,
+) -> tuple[list['StoryEntry'], list['StoryEntry']]:
+    """Split a list of story entries to fit within target height.
+
+    Returns (stories_that_fit, remaining_stories).
+    """
+    if not stories:
+        return [], []
+
+    fits = []
+    remaining = []
+    used_height = 0.0
+
+    for i, story in enumerate(stories):
+        story_h = text_height_mm(story.text, chars_per_line, line_height_mm, density_factor)
+
+        if used_height + story_h <= target_height_mm or not fits:
+            fits.append(story)
+            used_height += story_h
+        else:
+            remaining = stories[i:]
+            break
+
+    return fits, remaining
 
 
 # ── Core Pagination Algorithm ──
@@ -168,7 +355,7 @@ class Paginator:
         """
         pages: list[PageLayout] = []
         page_num = 1
-        max_pages = 100  # safety limit
+        max_pages = 200  # safety limit
 
         # Flatten all content into a queue
         section_queue = list(book.sections)
@@ -212,6 +399,45 @@ class Paginator:
         remaining_stories: list = field(default_factory=list)
         remaining_continuation: str = ""
 
+    def _dynamic_main_budget(
+        self,
+        available_height: float,
+        sources: list[SourceEntry],
+        stories: list[StoryEntry],
+        continuation: str,
+    ) -> float:
+        """Calculate a dynamic main text budget based on bottom zone density.
+
+        If sources/stories are dense, main text gets less space.
+        If sources/stories are sparse, main text gets more.
+        """
+        cfg = self.config
+
+        # Estimate bottom zone height
+        source_text = "\n".join(f"{s.ref}: {s.text}" for s in sources)
+        story_text = "\n".join(s.text for s in stories)
+        source_h = text_height_mm(source_text, cfg.source_chars_per_line,
+                                  cfg.source_text_line_height_mm, cfg.density_factor)
+        story_h = text_height_mm(story_text, cfg.story_chars_per_line,
+                                 cfg.story_text_line_height_mm, cfg.density_factor)
+        cont_h = text_height_mm(continuation, cfg.full_width_chars_per_line,
+                                cfg.full_width_line_height_mm, cfg.density_factor) if continuation else 0
+
+        bottom_need = max(source_h, story_h) + cont_h + cfg.divider_height_mm
+
+        if bottom_need <= 0:
+            # No bottom content — main text can use most of the page
+            return available_height * cfg.max_main_ratio
+
+        # Ratio: how much of the page does the bottom zone want?
+        bottom_ratio = min(bottom_need / available_height, 0.80)
+        main_ratio = 1.0 - bottom_ratio
+
+        # Clamp to configured range
+        main_ratio = max(cfg.min_main_ratio, min(cfg.max_main_ratio, main_ratio))
+
+        return available_height * main_ratio
+
     def _compose_page(
         self,
         page_num: int,
@@ -238,11 +464,20 @@ class Paginator:
             main_parts.append(carry_main)
 
         # ── STEP 1: Fill main text, pulling in linked sources/stories ──
-        # We iteratively add sections until the page is full
-        # Main text typically gets 30-50% of the page; the rest is bottom zone
-        main_text_budget = available_height * 0.35
+        # Peek at the next section to calculate a dynamic budget
+        pending_sources = list(carry_sources)
+        pending_stories = list(carry_stories)
+        if section_queue:
+            pending_sources += section_queue[0].sources
+            pending_stories += section_queue[0].stories
+
+        main_text_budget = self._dynamic_main_budget(
+            available_height, pending_sources, pending_stories, carry_continuation
+        )
+
         current_main_height = text_height_mm(
-            "\n".join(main_parts), cfg.main_chars_per_line, cfg.main_text_line_height_mm
+            "\n".join(main_parts), cfg.main_chars_per_line,
+            cfg.main_text_line_height_mm, cfg.density_factor
         )
 
         while current_main_height < main_text_budget and section_queue:
@@ -251,7 +486,8 @@ class Paginator:
             # Calculate what adding this section would cost
             section_main = f"\n{section.number}. {section.title}\n{section.main_text}"
             section_height = text_height_mm(
-                section_main, cfg.main_chars_per_line, cfg.main_text_line_height_mm
+                section_main, cfg.main_chars_per_line,
+                cfg.main_text_line_height_mm, cfg.density_factor
             )
 
             # Calculate the bottom zone cost for this section's sources+stories
@@ -260,10 +496,13 @@ class Paginator:
             )
             story_text = "\n".join(s.text for s in section.stories)
 
-            source_h = text_height_mm(source_text, cfg.source_chars_per_line, cfg.source_text_line_height_mm)
-            story_h = text_height_mm(story_text, cfg.story_chars_per_line, cfg.story_text_line_height_mm)
+            source_h = text_height_mm(source_text, cfg.source_chars_per_line,
+                                      cfg.source_text_line_height_mm, cfg.density_factor)
+            story_h = text_height_mm(story_text, cfg.story_chars_per_line,
+                                     cfg.story_text_line_height_mm, cfg.density_factor)
             continuation_h = text_height_mm(
-                section.continuation, cfg.full_width_chars_per_line, cfg.full_width_line_height_mm
+                section.continuation, cfg.full_width_chars_per_line,
+                cfg.full_width_line_height_mm, cfg.density_factor
             ) if section.continuation else 0
 
             # Total page cost: main + divider + max(source, story) + continuation
@@ -290,13 +529,15 @@ class Paginator:
         # ── STEP 2: Compose the main text ──
         layout.main_text = "\n".join(main_parts).strip()
         layout.main_text_height_mm = text_height_mm(
-            layout.main_text, cfg.main_chars_per_line, cfg.main_text_line_height_mm
+            layout.main_text, cfg.main_chars_per_line,
+            cfg.main_text_line_height_mm, cfg.density_factor
         )
         layout.section_numbers = section_nums
 
         remaining_height = available_height - layout.main_text_height_mm
 
         # ── STEP 3: Compose the bottom zone ──
+        remaining_main = ""
         if all_sources or all_stories:
             layout.has_divider = True
             remaining_height -= cfg.divider_height_mm
@@ -314,7 +555,8 @@ class Paginator:
             if continuation_text and bottom.continuation_placed:
                 layout.continuation_text = continuation_text
                 layout.continuation_height_mm = text_height_mm(
-                    continuation_text, cfg.full_width_chars_per_line, cfg.full_width_line_height_mm
+                    continuation_text, cfg.full_width_chars_per_line,
+                    cfg.full_width_line_height_mm, cfg.density_factor
                 )
                 continuation_text = ""
 
@@ -326,7 +568,7 @@ class Paginator:
 
         return Paginator._PageResult(
             layout=layout,
-            remaining_main="",  # for now, sections are atomic
+            remaining_main=remaining_main,
             remaining_sources=remaining_sources,
             remaining_stories=remaining_stories,
             remaining_continuation=continuation_text if continuation_text else "",
@@ -349,15 +591,21 @@ class Paginator:
         """
         The L-shape decision engine.
         Decides: dual-zone, single-zone, or L-shaped layout.
+
+        Key improvement: properly splits sources/stories across pages
+        and calculates accurate overflow heights for L-shape.
         """
         cfg = self.config
+        df = cfg.density_factor
 
         # Build full text blocks
         makor_text = "\n".join(f"{s.ref}: {s.text}" for s in sources)
         tzinor_text = "\n".join(s.text for s in stories)
 
-        makor_h = text_height_mm(makor_text, cfg.source_chars_per_line, cfg.source_text_line_height_mm)
-        tzinor_h = text_height_mm(tzinor_text, cfg.story_chars_per_line, cfg.story_text_line_height_mm)
+        makor_h = text_height_mm(makor_text, cfg.source_chars_per_line,
+                                 cfg.source_text_line_height_mm, df)
+        tzinor_h = text_height_mm(tzinor_text, cfg.story_chars_per_line,
+                                  cfg.story_text_line_height_mm, df)
 
         # ── Case 1: No bottom content ──
         if not sources and not stories:
@@ -368,36 +616,75 @@ class Paginator:
 
         # ── Case 2: Sources only, no stories ──
         if sources and not stories:
-            zone = BottomZone(
-                layout_type="makor_only",
-                makor_text=makor_text,
-                makor_height_mm=min(makor_h, available_height),
-            )
-            remaining_src = [] if makor_h <= available_height else sources  # simplified
-            cont_h = text_height_mm(continuation, cfg.full_width_chars_per_line, cfg.full_width_line_height_mm) if continuation else 0
-            cont_placed = (makor_h + cont_h) <= available_height
-            return Paginator._BottomResult(zone=zone, remaining_sources=remaining_src, continuation_placed=cont_placed)
+            if makor_h <= available_height:
+                zone = BottomZone(
+                    layout_type="makor_only",
+                    makor_text=makor_text,
+                    makor_height_mm=makor_h,
+                )
+                cont_h = text_height_mm(continuation, cfg.full_width_chars_per_line,
+                                        cfg.full_width_line_height_mm, df) if continuation else 0
+                cont_placed = (makor_h + cont_h) <= available_height
+                return Paginator._BottomResult(zone=zone, continuation_placed=cont_placed)
+            else:
+                # Split sources across pages
+                fit_src, remain_src = split_sources_at_height(
+                    sources, available_height, cfg.source_chars_per_line,
+                    cfg.source_text_line_height_mm, df
+                )
+                fit_text = "\n".join(f"{s.ref}: {s.text}" for s in fit_src)
+                fit_h = text_height_mm(fit_text, cfg.source_chars_per_line,
+                                       cfg.source_text_line_height_mm, df)
+                zone = BottomZone(
+                    layout_type="makor_only",
+                    makor_text=fit_text,
+                    makor_height_mm=min(fit_h, available_height),
+                )
+                return Paginator._BottomResult(
+                    zone=zone, remaining_sources=remain_src,
+                    continuation_placed=False
+                )
 
         # ── Case 3: Stories only, no sources ──
         if stories and not sources:
-            zone = BottomZone(
-                layout_type="tzinor_only",
-                tzinor_text=tzinor_text,
-                tzinor_height_mm=min(tzinor_h, available_height),
-            )
-            remaining_st = [] if tzinor_h <= available_height else stories
-            return Paginator._BottomResult(zone=zone, remaining_stories=remaining_st)
+            if tzinor_h <= available_height:
+                zone = BottomZone(
+                    layout_type="tzinor_only",
+                    tzinor_text=tzinor_text,
+                    tzinor_height_mm=tzinor_h,
+                )
+                cont_h = text_height_mm(continuation, cfg.full_width_chars_per_line,
+                                        cfg.full_width_line_height_mm, df) if continuation else 0
+                cont_placed = (tzinor_h + cont_h) <= available_height
+                return Paginator._BottomResult(zone=zone, continuation_placed=cont_placed)
+            else:
+                fit_st, remain_st = split_stories_at_height(
+                    stories, available_height, cfg.story_chars_per_line,
+                    cfg.story_text_line_height_mm, df
+                )
+                fit_text = "\n".join(s.text for s in fit_st)
+                fit_h = text_height_mm(fit_text, cfg.story_chars_per_line,
+                                       cfg.story_text_line_height_mm, df)
+                zone = BottomZone(
+                    layout_type="tzinor_only",
+                    tzinor_text=fit_text,
+                    tzinor_height_mm=min(fit_h, available_height),
+                )
+                return Paginator._BottomResult(
+                    zone=zone, remaining_stories=remain_st,
+                    continuation_placed=False
+                )
 
         # ── Case 4: Both sources and stories — decide on shape ──
+        height_diff = abs(makor_h - tzinor_h)
+        threshold = cfg.l_shape_threshold_mm
 
-        # Both fit side-by-side within available height
+        # Calculate what fits in available height
         col_height = max(makor_h, tzinor_h)
 
         if col_height <= available_height:
-            # Check if roughly balanced or L-shaped
-            height_diff = abs(makor_h - tzinor_h)
-
-            if height_diff < 10:  # within ~10mm = roughly balanced
+            # Everything fits on this page
+            if height_diff < threshold:
                 # ── BALANCED DUAL-ZONE ──
                 zone = BottomZone(
                     layout_type="dual",
@@ -407,71 +694,102 @@ class Paginator:
                     tzinor_height_mm=tzinor_h,
                 )
             elif makor_h > tzinor_h:
-                # ── L-SHAPE: Sources overflow full-width ──
-                # Split: dual-zone up to story height, then sources continue full-width
-                dual_height = tzinor_h  # both columns run to story height
-                overflow_source_lines = estimate_lines(makor_text, cfg.source_chars_per_line) - \
-                                        estimate_lines(makor_text, cfg.source_chars_per_line) * int(tzinor_h) // max(int(makor_h), 1)
-                # Simplified: estimate overflow as the height difference, now at full width
-                overflow_h = (makor_h - tzinor_h) * (cfg.source_chars_per_line / cfg.full_width_chars_per_line)
+                # ── L-SHAPE: Sources overflow full-width below stories ──
+                # The short column (stories) height = the dual-column portion
+                short_h = tzinor_h
+                # Lines of sources that fit in the dual-column portion
+                dual_source_lines = int(short_h / cfg.source_text_line_height_mm)
+                total_source_lines = estimate_lines(makor_text, cfg.source_chars_per_line, df)
+                overflow_source_lines = max(0, total_source_lines - dual_source_lines)
+                # Overflow lines are now full-width (more chars per line)
+                overflow_h = overflow_source_lines * cfg.full_width_line_height_mm
 
                 zone = BottomZone(
                     layout_type="l_shape_makor",
                     makor_text=makor_text,
                     tzinor_text=tzinor_text,
-                    makor_height_mm=dual_height,
-                    tzinor_height_mm=dual_height,
-                    overflow_text=makor_text,  # renderer will handle the split visually
+                    makor_height_mm=short_h,       # dual-column portion height
+                    tzinor_height_mm=short_h,       # both columns same height in dual portion
+                    overflow_text="",               # CSS float handles the visual split
                     overflow_height_mm=overflow_h,
                 )
             else:
-                # ── L-SHAPE: Stories overflow full-width ──
-                dual_height = makor_h
-                overflow_h = (tzinor_h - makor_h) * (cfg.story_chars_per_line / cfg.full_width_chars_per_line)
+                # ── L-SHAPE: Stories overflow full-width below sources ──
+                short_h = makor_h
+                dual_story_lines = int(short_h / cfg.story_text_line_height_mm)
+                total_story_lines = estimate_lines(tzinor_text, cfg.story_chars_per_line, df)
+                overflow_story_lines = max(0, total_story_lines - dual_story_lines)
+                overflow_h = overflow_story_lines * cfg.full_width_line_height_mm
 
                 zone = BottomZone(
                     layout_type="l_shape_tzinor",
                     makor_text=makor_text,
                     tzinor_text=tzinor_text,
-                    makor_height_mm=dual_height,
-                    tzinor_height_mm=dual_height,
-                    overflow_text=tzinor_text,
+                    makor_height_mm=short_h,
+                    tzinor_height_mm=short_h,
+                    overflow_text="",
                     overflow_height_mm=overflow_h,
                 )
 
             # Check continuation fits
-            cont_h = text_height_mm(continuation, cfg.full_width_chars_per_line, cfg.full_width_line_height_mm) if continuation else 0
+            cont_h = text_height_mm(continuation, cfg.full_width_chars_per_line,
+                                    cfg.full_width_line_height_mm, df) if continuation else 0
             total = zone.total_height_mm + cont_h
             cont_placed = total <= available_height
 
             return Paginator._BottomResult(zone=zone, continuation_placed=cont_placed)
 
         else:
-            # Content exceeds available height.
-            # Still detect L-shape — let CSS/WeasyPrint handle pagination.
-            height_diff = abs(makor_h - tzinor_h)
+            # ── Content exceeds available height — split across pages ──
+            # Split sources and stories to fit
+            fit_src, remain_src = split_sources_at_height(
+                sources, available_height, cfg.source_chars_per_line,
+                cfg.source_text_line_height_mm, df
+            )
+            fit_st, remain_st = split_stories_at_height(
+                stories, available_height, cfg.story_chars_per_line,
+                cfg.story_text_line_height_mm, df
+            )
 
-            if not stories:
+            fit_makor = "\n".join(f"{s.ref}: {s.text}" for s in fit_src)
+            fit_tzinor = "\n".join(s.text for s in fit_st)
+            fit_makor_h = text_height_mm(fit_makor, cfg.source_chars_per_line,
+                                          cfg.source_text_line_height_mm, df)
+            fit_tzinor_h = text_height_mm(fit_tzinor, cfg.story_chars_per_line,
+                                           cfg.story_text_line_height_mm, df)
+
+            fit_diff = abs(fit_makor_h - fit_tzinor_h)
+
+            if not fit_st:
                 layout_type = "makor_only"
-            elif not sources:
+            elif not fit_src:
                 layout_type = "tzinor_only"
-            elif height_diff < 10:
+            elif fit_diff < threshold:
                 layout_type = "dual"
-            elif makor_h > tzinor_h:
+            elif fit_makor_h > fit_tzinor_h:
                 layout_type = "l_shape_makor"
             else:
                 layout_type = "l_shape_tzinor"
 
+            # For L-shape with overflow, calculate overflow height
+            overflow_h = 0.0
+            if layout_type.startswith("l_shape"):
+                short_h = min(fit_makor_h, fit_tzinor_h)
+                long_h = max(fit_makor_h, fit_tzinor_h)
+                overflow_lines = int((long_h - short_h) / cfg.full_width_line_height_mm)
+                overflow_h = overflow_lines * cfg.full_width_line_height_mm
+
             zone = BottomZone(
                 layout_type=layout_type,
-                makor_text=makor_text,
-                tzinor_text=tzinor_text,
-                makor_height_mm=makor_h,
-                tzinor_height_mm=tzinor_h,
-                overflow_height_mm=height_diff * 0.7,  # estimate
+                makor_text=fit_makor,
+                tzinor_text=fit_tzinor,
+                makor_height_mm=min(fit_makor_h, fit_tzinor_h) if layout_type.startswith("l_shape") else fit_makor_h,
+                tzinor_height_mm=min(fit_makor_h, fit_tzinor_h) if layout_type.startswith("l_shape") else fit_tzinor_h,
+                overflow_height_mm=overflow_h,
             )
             return Paginator._BottomResult(
                 zone=zone,
-                remaining_sources=[],
-                remaining_stories=[],
+                remaining_sources=remain_src,
+                remaining_stories=remain_st,
+                continuation_placed=False,
             )
