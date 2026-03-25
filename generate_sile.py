@@ -9,9 +9,9 @@ mirrors how Tag Software works — each page composed independently.
 
 L-shape algorithm:
   1. Estimate line counts for makor vs tzinor
-  2. If ratio > 1.5x → longer column gets half-width frame with next= overflow
+  2. If ratio > 1.5x → longer column text is split at paragraph boundary
   3. Short column's frame height is sized to its content
-  4. Overflow frame spans full page width below both columns
+  4. First part typeset into half-width column, remainder into full-width overflow
 
 Usage:
     python generate_sile.py [content_json] [output_pdf]
@@ -60,6 +60,38 @@ def escape_sile(text: str) -> str:
     text = text.replace("\n", " ")
 
     return text.strip()
+
+
+def split_text_for_overflow(text: str, ratio: float) -> tuple:
+    """Split text at a paragraph boundary for column vs overflow.
+    ratio = approximate fraction that goes in the column (0-1)."""
+    if not text or ratio >= 1.0:
+        return (text, "")
+    if ratio <= 0:
+        return ("", text)
+
+    paragraphs = text.strip().split("\n\n")
+    if len(paragraphs) <= 1:
+        # Single paragraph: split by character position at sentence boundary
+        target = int(len(text) * ratio)
+        # Search forward for a good break (period, closing quote)
+        for i in range(target, min(target + 200, len(text))):
+            if i < len(text) - 1 and text[i] in '.\u05F4\u05F3' and text[i+1] == ' ':
+                return (text[:i+1].strip(), text[i+2:].strip())
+        # Fallback: split at target
+        return (text[:target].strip(), text[target:].strip())
+
+    # Multi-paragraph: split at paragraph boundary
+    total_len = sum(len(p) for p in paragraphs)
+    target_len = int(total_len * ratio)
+    running = 0
+    for i, para in enumerate(paragraphs):
+        running += len(para)
+        if running >= target_len:
+            first = "\n\n".join(paragraphs[:i+1])
+            second = "\n\n".join(paragraphs[i+1:])
+            return (first.strip(), second.strip())
+    return (text, "")
 
 
 def estimate_lines(text: str, chars_per_line: int = 42) -> int:
@@ -166,12 +198,25 @@ def generate_page_sil(page: dict, sile_class_path: str) -> str:
         doc.append(f"\\typeset-into[frame=makor_col]{{\\col-title{{{escape_sile(m_title)}}}\\sourcetext{{{escape_sile(makor)}}}}}")
         doc.append(f"\\typeset-into[frame=tzinor_col]{{\\col-title{{{escape_sile(t_title)}}}\\sourcetext{{{escape_sile(tzinor)}}}}}")
     elif layout == "makor_long":
-        # Short column first (tzinor), then long column (makor flows to overflow)
+        # Tzinor (short) goes entirely in its column
         doc.append(f"\\typeset-into[frame=tzinor_col]{{\\col-title{{{escape_sile(t_title)}}}\\sourcetext{{{escape_sile(tzinor)}}}}}")
-        doc.append(f"\\typeset-into[frame=makor_col]{{\\col-title{{{escape_sile(m_title)}}}\\sourcetext{{{escape_sile(makor)}}}}}")
+        # Makor (long): split between column and overflow
+        col_ratio = tzinor_lines / max(makor_lines, 1)
+        col_ratio = min(col_ratio + 0.05, 0.85)  # slight margin
+        makor_col_text, makor_overflow_text = split_text_for_overflow(makor, col_ratio)
+        doc.append(f"\\typeset-into[frame=makor_col]{{\\col-title{{{escape_sile(m_title)}}}\\sourcetext{{{escape_sile(makor_col_text)}}}}}")
+        if makor_overflow_text:
+            doc.append(f"\\typeset-into[frame=makor_overflow]{{\\sourcetext{{{escape_sile(makor_overflow_text)}}}}}")
     elif layout == "tzinor_long":
+        # Makor (short) goes entirely in its column
         doc.append(f"\\typeset-into[frame=makor_col]{{\\col-title{{{escape_sile(m_title)}}}\\sourcetext{{{escape_sile(makor)}}}}}")
-        doc.append(f"\\typeset-into[frame=tzinor_col]{{\\col-title{{{escape_sile(t_title)}}}\\sourcetext{{{escape_sile(tzinor)}}}}}")
+        # Tzinor (long): split between column and overflow
+        col_ratio = makor_lines / max(tzinor_lines, 1)
+        col_ratio = min(col_ratio + 0.05, 0.85)
+        tzinor_col_text, tzinor_overflow_text = split_text_for_overflow(tzinor, col_ratio)
+        doc.append(f"\\typeset-into[frame=tzinor_col]{{\\col-title{{{escape_sile(t_title)}}}\\sourcetext{{{escape_sile(tzinor_col_text)}}}}}")
+        if tzinor_overflow_text:
+            doc.append(f"\\typeset-into[frame=tzinor_overflow]{{\\sourcetext{{{escape_sile(tzinor_overflow_text)}}}}}")
 
     doc.append("")
     doc.append("\\end{document}")
@@ -193,7 +238,7 @@ def _frames_makor_long(div_top, col_top, short_bottom, page_bottom):
     return [
         f"\\frame[id=mainzone,left=12mm,right=100%pw-14mm,top=22mm,bottom={div_top}mm]",
         f"\\frame[id=tzinor_col,left=12mm,right=50%pw-1mm,top={col_top}mm,bottom={short_bottom}mm]",
-        f"\\frame[id=makor_col,left=50%pw+1mm,right=100%pw-14mm,top={col_top}mm,bottom={short_bottom}mm,next=makor_overflow]",
+        f"\\frame[id=makor_col,left=50%pw+1mm,right=100%pw-14mm,top={col_top}mm,bottom={short_bottom}mm]",
         f"\\frame[id=makor_overflow,left=12mm,right=100%pw-14mm,top={short_bottom + 3}mm,bottom={page_bottom}mm]",
     ]
 
@@ -203,7 +248,7 @@ def _frames_tzinor_long(div_top, col_top, short_bottom, page_bottom):
     return [
         f"\\frame[id=mainzone,left=12mm,right=100%pw-14mm,top=22mm,bottom={div_top}mm]",
         f"\\frame[id=makor_col,left=50%pw+1mm,right=100%pw-14mm,top={col_top}mm,bottom={short_bottom}mm]",
-        f"\\frame[id=tzinor_col,left=12mm,right=50%pw-1mm,top={col_top}mm,bottom={short_bottom}mm,next=tzinor_overflow]",
+        f"\\frame[id=tzinor_col,left=12mm,right=50%pw-1mm,top={col_top}mm,bottom={short_bottom}mm]",
         f"\\frame[id=tzinor_overflow,left=12mm,right=100%pw-14mm,top={short_bottom + 3}mm,bottom={page_bottom}mm]",
     ]
 
