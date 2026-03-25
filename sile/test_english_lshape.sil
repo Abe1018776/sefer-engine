@@ -1,0 +1,43 @@
+\begin[papersize=170mm x 240mm,class=sefer]{document}
+
+\begin[first-content-frame=mainzone]{pagetemplate}
+  \frame[id=mainzone,left=14mm,right=100%pw-12mm,top=22mm,bottom=52%ph]
+  \frame[id=makor_col,left=14mm,right=50%pw-1mm,top=53%ph,bottom=100%ph-9mm,next=overflow]
+  \frame[id=tzinor_col,left=50%pw+1mm,right=100%pw-12mm,top=53%ph,bottom=70%ph]
+  \frame[id=overflow,left=14mm,right=100%pw-12mm,top=bottom(tzinor_col)+2mm,bottom=100%ph-9mm]
+\end{pagetemplate}
+
+\font[family=Gentium Plus,size=13pt,weight=700]
+Page Title: The Nature of True Kindness
+\par\bigskip
+
+\font[family=Gentium Plus,size=12pt,weight=400]
+And the entirety of Israel, as we have found great and good righteous people from time immemorial, who devoted all their days only to the exaltation of God's honor, and did not set their hearts to arouse mercy and to bestow the goodness of this world upon the people of their generation -- they did not live long lives and did not merit leadership in this world; for such conduct was not pleasing in God's eyes, because God desires His people and wishes to do good for them. Therefore, all His desire and will is that a person should arouse mercy upon the children of Israel and bestow upon them all good, and not care only about the honor of the Creator, for this is His honor -- to see the good of Israel. For through their good, His name is magnified and sanctified in the world. And furthermore, all the great praise that the angels praise and glorify God in the heavenly realms is specifically about the good things He bestows upon the children of Israel.
+\par
+\smallskip
+◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆◆
+\par\medskip
+
+\typeset-into[frame=tzinor_col]{
+\font[family=Gentium Plus,size=9pt,weight=700]
+\center{◆ Stories of the Righteous ◆}
+\par\medskip
+\font[family=Gentium Plus,size=8pt,weight=400]
+It is told of the holy Rabbi, the author of the Tiferes Shlomo of Radomsk, that on the Shabbos of Parshas Noach he would seclude himself in his room and would not come out to conduct his holy table, saying about Noach: "He was a righteous man in his fur coat, he locked himself in a box" -- meaning that he shut himself in the ark and abandoned the people of his generation to be destroyed by the flood.
+\par
+}
+
+\typeset-into[frame=makor_col]{
+\font[family=Gentium Plus,size=9pt,weight=700]
+\center{◆ Sources of Influence ◆}
+\par\medskip
+\font[family=Gentium Plus,size=8pt,weight=400]
+"God rejoices in His works" (Psalms 104:31), and against His honor, He did not consider the suffering of the children of Israel as nothing. Thus the will of God is not in this, for His desire is that there should be a leader of the generation to arouse mercy upon the children of Israel and not to care only about the honor of the Creator alone. And this is the matter that we find regarding Rabbi Yishmael ben Elisha (Berachos 7a) who entered the Holy of Holies and was praying for the children of Israel -- may Your mercy overcome Your anger and may Your mercy roll over -- apparently why did he not pray for the honor of the Creator "and therefore give Your fear" and the like, but in truth this is His way, blessed be His name, to see the good of the children of Israel. And this was also the deficiency of Nadav and Avihu "when they drew near before God" -- meaning they always walked only in this level before God, to care only about His honor alone, to sacrifice their lives for the sake of God, therefore "they died," for this path is itself, but for the good of the generation and to lead them, the righteous one must be a master of mercy to seek their good and to arouse mercy and kindness, and since they had no leadership in this world, therefore they departed from this world.
+\par
+In Parshas Pinchas: "There are two types of righteous people. The first is one who hopes and looks forward to the greatness of the Creator, may His honor endure forever, with the coming of the Messiah speedily in our days... However, there is another aspect in the righteous foundation of the world, to be one who seeks good for his people, which is what God chose, for His desire and will is that such a righteous one should bestow good upon the children of Israel."
+\par
+Furthermore in Pinchas: "This is the meaning of 'The angels give pleasant melodies to the King, the living and enduring God, for He alone is exalted and holy' (Blessing of Yotzer Or). Meaning, even the angels above cannot tell of His praise, 'for He alone is exalted and holy' and who can grasp Him. But this they give -- the greatness of His praise when they see the good of the children of Israel, in this they recognize the strength of His might."
+\par
+}
+
+\end{document}
