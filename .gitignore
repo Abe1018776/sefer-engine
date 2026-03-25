@@ -1,0 +1,24 @@
+# Generated output
+output/*.pdf
+output/*.html
+output/*.sil
+
+# SILE test output
+sile/output_test.pdf
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
