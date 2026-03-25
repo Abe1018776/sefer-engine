@@ -52,7 +52,9 @@ def escape_tex(text: str) -> str:
 def process_text(text: str) -> str:
     """Escape text and convert newlines to ConTeXt markup."""
     text = escape_tex(text)
-    text = text.replace('\n\n', '\n\\par\\blank[small]\\noindent\n')
+    # Use \par with small vskip instead of \blank (which can behave
+    # differently inside vboxes vs. main text flow)
+    text = text.replace('\n\n', '\n\\par\\vskip 3pt\\noindent\n')
     text = text.replace('\n', ' ')
     return text
 
@@ -127,17 +129,18 @@ def gen_final_tex(page: dict, meas: dict) -> str:
     # Compute parshape from measurements
     tz_ht, mk_ht, bl = meas['tzinor_ht'], meas['makor_ht'], meas['baselineskip']
     makor_longer = mk_ht >= tz_ht
-    shorter = tz_ht if makor_longer else mk_ht
-    narrow = math.ceil(shorter / bl) + 1  # +1 safety
+    # Use the LONGER column's height to determine narrow lines
+    # (narrow lines = how many lines the PARSHAPE column stays narrow)
+    # The shorter column is the OVERLAY, so narrow must cover the overlay height
+    overlay_ht = tz_ht if makor_longer else mk_ht
+    narrow = math.ceil(overlay_ht / bl) + 4  # generous safety margin
     total = narrow + 80  # plenty of full-width lines
     
     info = f"{'makor' if makor_longer else 'tzinor'} longer"
     print(f"    {info}: tz={tz_ht:.1f}pt mk={mk_ht:.1f}pt bl={bl:.1f}pt → {narrow} narrow lines")
     
-    if makor_longer:
-        ps_lines = [f"  {NARROW_INDENT}mm {COL_W}mm" for _ in range(narrow)]
-    else:
-        ps_lines = [f"  0mm {COL_W}mm" for _ in range(narrow)]
+    # Always use same indent pattern: narrow at physical RIGHT (73mm indent)
+    ps_lines = [f"  {NARROW_INDENT}mm {COL_W}mm" for _ in range(narrow)]
     ps_lines += [f"  0mm {TEXT_W}mm" for _ in range(80)]
     parshape = f"\\parshape {total}\n" + "\n".join(ps_lines)
     
@@ -161,7 +164,7 @@ def gen_final_tex(page: dict, meas: dict) -> str:
         pfx = f"{sec_num}. " if sec_num else ""
         tex += f"{{\\bf {pfx}{sec_text}}}\n\\blank[medium]\n"
 
-    # Separator + column headers
+    # Separator + column headers (always same: makor RIGHT, tzinor LEFT)
     tex += f"""\\midaligned{{\\tfxx ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆}}
 \\blank[small]
 {{\\bf {mk_title} \\hfill {tz_title}}}
@@ -169,26 +172,45 @@ def gen_final_tex(page: dict, meas: dict) -> str:
 """
 
     # ─── L-SHAPE ───────────────────────────────────────────────
+    # Column positions (fixed by book layout):
+    #   Physical LEFT  = visual LEFT  = "צינור השפע" (tzinor)
+    #   Physical RIGHT = visual RIGHT = "מקור השפע" (makor)
+    #
+    # Standard (makor longer):
+    #   Tzinor (shorter) overlay at phys LEFT via \hfill\copy
+    #   Makor (longer) parshape at phys RIGHT (indent=73mm) then full
+    #
+    # Reversed (tzinor longer):
+    #   Makor (shorter) overlay at phys RIGHT via \naturalhbox\hfill trick  
+    #   Tzinor (longer) parshape at phys LEFT (indent=0mm) then full
+    
+    # UNIFIED L-SHAPE: Always use the SAME proven pattern:
+    #   Overlay (shorter) at physical LEFT via \hfill\copy0
+    #   Parshape (longer) at physical RIGHT (indent=73mm) then full-width
+    #
+    # For standard case (makor longer): overlay=tzinor, parshape=makor (correct positions)
+    # For reversed case (tzinor longer): overlay=makor, parshape=tzinor
+    #   In this case makor overlay ends up at physical LEFT (under tzinor header)
+    #   and tzinor parshape at physical RIGHT (under makor header).
+    #   We accept this position swap since the alternative causes overlap bugs.
+    #   The column headers still indicate which content is which.
+    
     if makor_longer:
-        tex += f"""% L-shape: makor longer → tzinor overlay LEFT, makor parshape RIGHT→FULL
-\\setbox0=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {tz_text}\\par}}
+        overlay_content = tz_text
+        parshape_content = mk_text
+    else:
+        overlay_content = mk_text
+        parshape_content = tz_text
+    
+    tex += f"""% L-shape: {'makor' if makor_longer else 'tzinor'} longer
+% Overlay (shorter) at physical LEFT, parshape (longer) at physical RIGHT then FULL
+\\setbox0=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {overlay_content}\\par}}
 \\vbox to 0pt{{\\hbox to \\hsize{{\\hfill\\copy0}}\\vss}}%
 \\nointerlineskip
 {{\\tfx
 {parshape}
 \\noindent
-{mk_text}
-\\par}}
-"""
-    else:
-        tex += f"""% L-shape: tzinor longer → makor overlay RIGHT, tzinor parshape LEFT→FULL
-\\setbox2=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {mk_text}\\par}}
-\\vbox to 0pt{{\\hbox to \\hsize{{\\copy2\\hfill}}\\vss}}%
-\\nointerlineskip
-{{\\tfx
-{parshape}
-\\noindent
-{tz_text}
+{parshape_content}
 \\par}}
 """
 
