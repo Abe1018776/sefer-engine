@@ -1,15 +1,13 @@
 --- Sefer document class for Hebrew book layout (Shefa Shlomo style).
 --
--- Page zones:
---   headerframe  — running head (page num, book name, section, author)
+-- Page zones (defined per-page via \pagetemplate in the .sil file):
 --   mainzone     — primary lesson text (bold, ~12.5pt)
---   divider      — ornamental diamond row
 --   makor_col    — right column: מקור השפע (sources)
 --   tzinor_col   — left column: צינור השפע (stories)
---   *_overflow   — full-width continuation for L-shape
+--   overflow     — full-width continuation for L-shape (via next= attribute)
 --
--- Frame definitions are set per-page via \pagetemplate in the .sil file.
--- This class provides the text styling commands only.
+-- Frame definitions are set per-page via \pagetemplate in the generated .sil file.
+-- This class provides text styling commands only.
 --
 -- @use classes.sefer
 
@@ -97,7 +95,6 @@ function class:registerCommands ()
   -- SOURCE TEXT — small regular (bottom columns)
   -- ═══════════════════════════════════════
   self:registerCommand("sourcetext", function (_, content)
-    SILE.call("thisframedirection", { direction = "RTL" })
     SILE.call("font", {
       family = "Frank Ruehl CLM",
       size = "8.5pt",
@@ -106,6 +103,7 @@ function class:registerCommands ()
     })
     SILE.settings:temporarily(function ()
       SILE.settings:set("document.baselineskip", SILE.types.node.vglue("12pt"))
+      SILE.call("thisframedirection", { direction = "RTL" })
       SILE.process(content)
       SILE.call("par")
     end)
@@ -154,10 +152,6 @@ function class:registerCommands ()
     end)
     SILE.call("medskip")
   end)
-
-  -- TODO: Issue 5 — Add vertical rule between columns.
-  -- SILE doesn't have native column rules. Will need a Lua drawing command
-  -- or \hrule rotation approach in a future iteration.
 
   -- ═══════════════════════════════════════
   -- RUNNING HEADER
