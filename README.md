@@ -8,6 +8,8 @@ and the distinctive **L-shape "snake flow"** design.
 ## Features
 
 - **Two rendering backends**: WeasyPrint (HTML→PDF) and SILE (frame-based typesetter)
+- **Per-page compilation**: each page is compiled independently by SILE, then merged
+  with `pdfunite` — avoids cross-page reflow issues entirely
 - **L-shape layout**: when one commentary column is longer, the shorter column ends
   and the longer one wraps full-width below — forming an L-shape ("snake flow")
 - **Hebrew RTL**: full right-to-left support with Noto Serif Hebrew and HarfBuzz shaping
@@ -15,6 +17,11 @@ and the distinctive **L-shape "snake flow"** design.
 - **Faithful reproduction**: calibrated to match שפע שלמה original page dimensions (170×240mm)
 
 ## Architecture
+
+The SILE pipeline uses **per-page compilation** — each page is an independent
+SILE document compiled to its own PDF, then all pages are merged. This mirrors
+how Tag Software works (each page composed independently) and eliminates
+SILE's `pagetemplate` state issues across page boundaries.
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -27,18 +34,32 @@ and the distinctive **L-shape "snake flow"** design.
      │  (WeasyPrint) │   │    (SILE)      │
      └───────┬───────┘   └───────┬────────┘
              │                    │
-     ┌───────▼───────┐   ┌───────▼────────┐
-     │ engine/       │   │ sile/          │
-     │  renderer.py  │   │  classes/      │
-     │  styles.py    │   │   sefer.lua    │
-     │  fonts.py     │   │  run_sile.sh   │
-     └───────┬───────┘   └───────┬────────┘
+     ┌───────▼───────┐   ┌───────▼────────────────────┐
+     │ engine/       │   │ Per-page pipeline:          │
+     │  renderer.py  │   │  1. JSON → .sil (per page)  │
+     │  styles.py    │   │  2. SILE → .pdf (per page)  │
+     │  fonts.py     │   │  3. pdfunite → merged PDF   │
+     └───────┬───────┘   └───────┬────────────────────┘
              │                    │
              ▼                    ▼
-         HTML → PDF          .sil → PDF
+         HTML → PDF          .sil → PDF (per page → merge)
 ```
 
-### Page Layout (L-Shape)
+### L-Shape Algorithm
+
+The pipeline estimates line counts for each commentary column (makor / tzinor)
+and selects one of three frame layouts:
+
+| Ratio (makor / tzinor) | Layout          | Description                                        |
+|------------------------|-----------------|----------------------------------------------------|
+| 0.65 – 1.55           | **balanced**    | Two equal side-by-side columns                     |
+| ≥ 1.55                | **makor_long**  | Tzinor is short; makor flows full-width via `next=` |
+| ≤ 0.65                | **tzinor_long** | Makor is short; tzinor flows full-width via `next=` |
+
+SILE's `frametricks` package handles the overflow: the longer column's frame
+has a `next=` pointer to a full-width overflow frame below both columns.
+
+### Page Layout
 
 Each page has three zones:
 
@@ -48,7 +69,7 @@ Each page has three zones:
 │  page#   שפע שלמה   author  │
 ├──────────────────────────────┤
 │                              │
-│     Main Text (bold 13pt)    │
+│     Main Text (bold 12.5pt)  │
 │     Section Header / Body    │
 │                              │
 ├──────────────────────────────┤
@@ -76,7 +97,7 @@ pip install -r requirements.txt
 
 This installs [WeasyPrint](https://weasyprint.org/) (>=60.0) for the HTML→PDF backend.
 
-### SILE (optional, for frame-based backend)
+### SILE (for frame-based backend)
 
 SILE v0.15.12+ must be built from source:
 
@@ -84,6 +105,12 @@ SILE v0.15.12+ must be built from source:
 # See https://sile-typesetter.org/install/
 # Ensure /usr/local/bin/sile-lua is available
 # and LD_LIBRARY_PATH includes /usr/local/lib
+```
+
+`pdfunite` (from `poppler-utils`) is required for the PDF merge step:
+
+```bash
+sudo apt install poppler-utils
 ```
 
 ### Fonts
@@ -99,7 +126,7 @@ sudo apt install fonts-noto-serif-hebrew
 
 ## Usage
 
-### WeasyPrint backend (recommended)
+### WeasyPrint backend
 
 ```bash
 python generate.py [content_json] [output_pdf]
@@ -110,27 +137,26 @@ python generate.py
 # → writes output/shefa_shlomo_test.pdf
 ```
 
-### SILE backend
+### SILE backend (per-page compilation)
 
 ```bash
+python generate_sile.py [content_json] [output_pdf]
+
+# Defaults:
 python generate_sile.py
-
 # → reads content/test_pages.json
-# → writes output/shefa_shlomo_sile.pdf
+# → compiles each page independently
+# → merges into output/shefa_shlomo_sile.pdf
 ```
 
-Or use the convenience wrapper:
-
-```bash
-cd sile && bash run_sile.sh test_lshape.sil -o output_test.pdf
-```
+Debug `.sil` files for each page are saved to `output/debug/`.
 
 ## Project Structure
 
 ```
 sefer-engine/
 ├── generate.py            # WeasyPrint entry point
-├── generate_sile.py       # SILE entry point
+├── generate_sile.py       # SILE production pipeline (per-page compile + merge)
 ├── requirements.txt       # Python dependencies
 ├── engine/                # WeasyPrint renderer
 │   ├── __init__.py
@@ -139,12 +165,15 @@ sefer-engine/
 │   └── fonts.py           # Font discovery via fc-match
 ├── sile/                  # SILE typesetter
 │   ├── classes/
-│   │   └── sefer.lua      # Custom SILE document class
+│   │   └── sefer.lua      # Custom SILE document class (text styling commands)
 │   ├── run_sile.sh        # Shell wrapper
 │   ├── test_lshape.sil    # L-shape demo document
 │   └── test_sefer.sil     # Basic test document
-└── content/
-    └── test_pages.json    # 3 sample pages from שפע שלמה
+├── content/
+│   └── test_pages.json    # 3 sample pages from שפע שלמה
+└── output/
+    ├── debug/             # Per-page .sil files (for debugging)
+    └── *.pdf              # Generated PDFs
 ```
 
 ## Input Format
@@ -174,12 +203,6 @@ The engine reads JSON with this structure:
   ]
 }
 ```
-
-## Known Issues
-
-- **Multi-page SILE output**: template ordering across page boundaries can cause
-  layout glitches when SILE reflows content. Single-page L-shape works perfectly.
-  Multi-page documents may need manual template tuning.
 
 ## License
 
