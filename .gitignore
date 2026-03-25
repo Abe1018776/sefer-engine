@@ -22,3 +22,11 @@ build/
 *~
 .DS_Store
 Thumbs.db
+context/output/*.pdf
+context/output/*.measurements
+context/output/*_measure.*
+context/*.log
+context/*.tuc
+context/*.pdf
+*.log
+*.tuc

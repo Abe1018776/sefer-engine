@@ -1,0 +1,102 @@
+\definepapersize[seferpage][width=170mm,height=240mm]
+\setuppapersize[seferpage]
+
+\setuplayout[
+  topspace=11mm,
+  bottomspace=9mm,
+  backspace=14mm,
+  width=142mm,
+  height=220mm,
+]
+
+\mainlanguage[he]
+\setupalign[r2l,hz,hanging]
+\definefontfamily[hebrewfont][rm][David CLM]
+\setupbodyfont[hebrewfont,12pt]
+
+\setupindenting[no]
+
+\starttext
+
+% ═══ HEADER ═══
+{\bf\tfx ח \hfill {\tfd שפע} \quad שער גמילות חסדים \hfill שלמה}
+
+\blank[big]
+
+% ═══ MAIN TEXT (bold, large) ═══
+{\bf מעלה את הקב"ה, הוא על הטובות שמשפיע לבני ישראל, כי כשרואים בטובת ישראל מספרים גודל שבחו, לפי שבזה ניכר תוקף חסדו וכח גבורתו.}
+
+\blank[small]
+\midaligned{\tfx מהות ה'חסיד' - מתפלל ומיטיב לזולתו}
+\blank[small]
+
+{\bf ו. לעומת זאת, המרחם על חברו, משתתף בצערו ומתפלל בעדו, הרי הוא נחשב חלקו ונחלתו של הקב"ה"א. ולא ייקרא האדם בתואר 'חסיד', שנקרא כן על שם החסד שגומל, אלא אם כן הוא דורש טובת זולתו ומבקש עליו רחמים; שכן מי שמבקש, מתפלל ומשפיע רק על עצמו, אין מעשיו נחשבים לחסד כלל: [ג].}
+
+\blank[medium]
+\midaligned{\tfxx ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆}
+\blank[small]
+
+% ═══ COLUMN HEADERS ═══
+{\bf מקור השפע \hfill צינור השפע}
+
+\blank[small]
+
+% ═══════════════════════════════════════════════════════════════
+% SEAMLESS L-SHAPE USING \parshape
+% ═══════════════════════════════════════════════════════════════
+%
+% Technique (proven working):
+%   1. Build tzinor text in a \vbox at natural size (\setbox0)
+%   2. Place it at the physical LEFT using an RTL \hbox to \hsize
+%      with \hfill (pushes content leftward in RTL) — zero height via \vbox to 0pt
+%   3. Follow with \nointerlineskip + makor paragraph using \parshape:
+%      - First N lines: indent=73mm from left, width=69mm (right half only)
+%      - Remaining lines: indent=0mm, width=142mm (full width)
+%   4. Result: makor flows narrow beside tzinor, then seamlessly widens.
+%      Single paragraph = ZERO visual seam at the transition.
+
+% --- Step 1: Build tzinor vbox in normal RTL context ---
+\setbox0=\vbox{%
+  \hsize=69mm
+  \setupalign[r2l,hz,hanging]
+  \tfx\noindent
+  [ג] מסופר על רבינו הרה"ק בעל התפארת שלמה מראדומסק זיע"א שבשבת פרשת נח היה מסתגר בחדרו ולא היה יוצא לערוך שלחנו הטהור, באמרו על נח 'ער איז געווענזען א צדיק אין פעלץ'. פירוש שנח היה צדיק רק בפרווה שלו, שלא דאג אלא לעצמו ולא התפלל על בני דורו. ועל כן לא זכה להיקרא 'חסיד'.%
+  \par
+}
+
+% --- Step 2: Overlay tzinor at physical left, zero vertical space ---
+\vbox to 0pt{%
+  \hbox to \hsize{\hfill\copy0}%
+  \vss
+}%
+\nointerlineskip
+
+% --- Step 3: Makor paragraph with \parshape for seamless L-shape ---
+% 13 narrow lines (beside tzinor) then full-width lines
+{\tfx
+\parshape 16
+  73mm 69mm
+  73mm 69mm
+  73mm 69mm
+  73mm 69mm
+  73mm 69mm
+  73mm 69mm
+  73mm 69mm
+  73mm 69mm
+  73mm 69mm
+  73mm 69mm
+  73mm 69mm
+  73mm 69mm
+  73mm 69mm
+  0mm 142mm
+  0mm 142mm
+  0mm 142mm
+\noindent
+'ישמח ה' במעשיו' (תהלים קד לא), ונגד כבודו יתברך שמו לא היה שוה בעיניו כלל צער של בני ישראל. כך רצון ה' יתברך אינו בזה, כי חפצו ורצונו שיהיה מנהיג הדור כדי לעורר רחמים על בני ישראל ולא לחוס על כבוד הבורא לבד. וזה הענין שמצינו ברבי ישמעאל בן אלישע (ברכות ז א) שנכנס לפני ולפנים והיה מתפלל על בני ישראל.
+וזה היה ג"כ חסרון של נדב ואביהוא 'בקרבתם לפני ה'', פירוש שהיו הולכים תמיד רק במדריגה זו לפני ה' - לחוס רק על כבודו לבד, למסור נפש עבורי ית"ש, לכך זימותו', כי זה הדרך הוא עצמו, אבל לטובת הדור ולהנחיגם צריך הצדיק להיות בעל הרחמים לבקש טובתם ולעורר רחמים חסדים, ומאשר לא היה להם הנהגה בעוה"ז לכן נסתלקו מעוה"ז.
+בפרשת פנחס (ד"ה החתן): "יש שני מיני צדיקים, האחד, הוא המייחל ומצפה על גדולת הבורא ב"ה יהי כבוד ה' לעולם בביאת משיח במהרה בימינו... אולם יש בחינה אחרת בצדיק יסוד עולם, להיות דורש טוב לעמו, אשר בזה בחר ה', כי חפצו ורצונו יתברך שמו להיות צדיק כזה להשפיע טוב לבני ישראל, כאשר היה חיכך כוונת הברכה בזה, כמו שאומרים (ברכת ההפטרה) 'צור כל העולמים צדיק בכל הדורות' - דור דור ודורשיו, שיהיה המנהיג סובל הדור ומרחם עליהם ולהמתיק הדינים מהם... [כי] זהו כבוד הבורא להיטיב לבראיו עם בני ישראל".
+כ. פרשת פנחס (ד"ה החתן): "וזה פירוש 'יאל ברוך נעימות יתנו למלך אל חי וקיים וכו' כי הוא לבדו מרום וקדוש' (ברכת יוצר אור). פירוש גם המלאכים שלמעלה אינם יכולין לספר בשבחו, 'כי הוא לבדו מרום וקדוש' ומי יוכל להשיג ולממותו יתברך שמו. אך זאת יתנו גודל שבחו כאשר רואים בטובת בני ישראל, בזה יכירו כח גבורתו יתברך שמו כמו שנאמר להלן (שם) 'פועל גבורות עושה חדשות בורא רפואות' וכו'".
+כא. מבוא השער (אחר הנחת תפילין): "'קדש לי כל בכור פטר כל רחם בני ישראל' (שמות יג, ב)... 'פטר כל רחם' פירוש פתיחת כל הרחמנות של האדם יהיה 'בבני ישראל', כל מי שיש בו רחמנות על חברו בבנ"י להצטער עמו להיות בעזרתו בכל מה שיוכל, גם להתפלל עבורו אל ה' וכו' זה 'לי הוא', איש כזה הוא לי לשמי".
+\par}
+
+\stoptext
