@@ -18,6 +18,7 @@ Usage:
 """
 
 import json
+import re
 import subprocess
 import sys
 import os
@@ -50,9 +51,19 @@ def escape_sile(text: str) -> str:
     text = text.replace(' - ', ' \u05BE ')
     text = text.replace('-', '\u05BE')
 
+    # Replace three dots with Hebrew ellipsis (Issue 3)
+    text = text.replace('...', '\u2026')
+
+    # Normalize spacing around gershayim (Issue 3)
+    text = text.replace('\u05F4 ', ' \u05F4')
+
+    # Replace footnote markers [X] with bold \marker command (Issue 2)
+    text = re.sub(r'\[([\u05D0-\u05EA])\]', r'\\marker{\1}', text)
+
     # Wrap remaining BiDi-neutral punctuation with RLM (Right-to-Left Mark)
+    # Note: removed [] from this list — they are handled above for footnote markers
     RLM = '\u200F'
-    for ch in '()[].:;,':
+    for ch in '().:;,':
         text = text.replace(ch, f'{RLM}{ch}{RLM}')
 
     # Paragraph breaks
@@ -124,21 +135,29 @@ def generate_page_sil(page: dict, sile_class_path: str) -> str:
     main_lines = estimate_lines(main_text, 52)
     sec_lines = estimate_lines(sec_text, 52) if sec_text else 0
     top_lines = main_lines + sec_lines + (3 if sec_title else 0)
-    # Header takes ~18mm (font + bigskip), each main text line ≈ 6.2mm
-    # Divider takes ~8mm. Add generous padding.
-    header_h = 18
-    text_h = top_lines * 6.2
-    divider_h = 8 if (makor or tzinor) else 0
-    main_zone_bottom = 22 + header_h + text_h + divider_h + 5
-    # Minimum: header + at least some text + divider
-    main_zone_bottom = max(main_zone_bottom, 65)
+    # The header is typeset into mainzone, so it's part of the content flow.
+    # We only need to estimate the actual text content height.
+    # Each main text line ≈ 7.4mm (21pt baseline = 7.4mm)
+    text_h = top_lines * 7.4
+    # Header (sefer-header + bigskip) ≈ 15mm inside the flow
+    header_in_flow = 15
+    # Section header if present ≈ 8mm
+    sec_header_h = 8 if sec_title else 0
+    # Divider ≈ 6mm
+    divider_h = 6 if (makor or tzinor) else 0
+
+    # Total main zone: starts at 22mm (top margin)
+    main_zone_bottom = 22 + header_in_flow + text_h + sec_header_h + divider_h + 3
+    # Clamp: at least 55mm (min content), at most 65% of page for main
+    main_zone_bottom = max(main_zone_bottom, 55)
+    main_zone_bottom = min(main_zone_bottom, 155)  # leave room for columns
 
     makor_lines = estimate_lines(makor, 42)
     tzinor_lines = estimate_lines(tzinor, 42)
     ratio = makor_lines / max(tzinor_lines, 1) if tzinor_lines else 99.0
 
     # Column zone starts after divider
-    col_top = main_zone_bottom + 8  # 8mm for divider + column headers
+    col_top = main_zone_bottom + 6  # 6mm gap between mainzone and columns
     page_bottom = 231  # 240mm page - 9mm bottom margin
 
     # ── Determine L-shape layout ──
@@ -202,7 +221,7 @@ def generate_page_sil(page: dict, sile_class_path: str) -> str:
         doc.append(f"\\typeset-into[frame=tzinor_col]{{\\col-title{{{escape_sile(t_title)}}}\\sourcetext{{{escape_sile(tzinor)}}}}}")
         # Makor (long): split between column and overflow
         col_ratio = tzinor_lines / max(makor_lines, 1)
-        col_ratio = min(col_ratio + 0.05, 0.85)  # slight margin
+        col_ratio = min(col_ratio + 0.1, 0.9)  # increased margin for overflow (Issue 6)
         makor_col_text, makor_overflow_text = split_text_for_overflow(makor, col_ratio)
         doc.append(f"\\typeset-into[frame=makor_col]{{\\col-title{{{escape_sile(m_title)}}}\\sourcetext{{{escape_sile(makor_col_text)}}}}}")
         if makor_overflow_text:
@@ -212,7 +231,7 @@ def generate_page_sil(page: dict, sile_class_path: str) -> str:
         doc.append(f"\\typeset-into[frame=makor_col]{{\\col-title{{{escape_sile(m_title)}}}\\sourcetext{{{escape_sile(makor)}}}}}")
         # Tzinor (long): split between column and overflow
         col_ratio = makor_lines / max(tzinor_lines, 1)
-        col_ratio = min(col_ratio + 0.05, 0.85)
+        col_ratio = min(col_ratio + 0.1, 0.9)  # increased margin for overflow (Issue 6)
         tzinor_col_text, tzinor_overflow_text = split_text_for_overflow(tzinor, col_ratio)
         doc.append(f"\\typeset-into[frame=tzinor_col]{{\\col-title{{{escape_sile(t_title)}}}\\sourcetext{{{escape_sile(tzinor_col_text)}}}}}")
         if tzinor_overflow_text:

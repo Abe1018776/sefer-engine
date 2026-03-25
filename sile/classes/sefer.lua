@@ -126,7 +126,17 @@ function class:registerCommands ()
   end)
 
   -- ═══════════════════════════════════════
-  -- COLUMN TITLE — bold with fleuron ornaments
+  -- FOOTNOTE MARKER — bold [א] style references
+  -- ═══════════════════════════════════════
+  self:registerCommand("marker", function(_, content)
+    SILE.call("font", { weight = 700, size = "9pt" })
+    SILE.typesetter:typeset("[")
+    SILE.process(content)
+    SILE.typesetter:typeset("]")
+  end)
+
+  -- ═══════════════════════════════════════
+  -- COLUMN TITLE — bold with simple ornaments
   -- ═══════════════════════════════════════
   self:registerCommand("col-title", function (_, content)
     SILE.settings:temporarily(function ()
@@ -137,13 +147,17 @@ function class:registerCommands ()
         language = "he",
       })
       SILE.call("center", {}, function ()
-        SILE.typesetter:typeset("❧ ")
+        SILE.typesetter:typeset("◆ ")
         SILE.process(content)
-        SILE.typesetter:typeset(" ❧")
+        SILE.typesetter:typeset(" ◆")
       end)
     end)
     SILE.call("medskip")
   end)
+
+  -- TODO: Issue 5 — Add vertical rule between columns.
+  -- SILE doesn't have native column rules. Will need a Lua drawing command
+  -- or \hrule rotation approach in a future iteration.
 
   -- ═══════════════════════════════════════
   -- RUNNING HEADER
