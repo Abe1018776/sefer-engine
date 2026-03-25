@@ -45,7 +45,7 @@ function class:registerCommands ()
   -- ═══════════════════════════════════════
   self:registerCommand("maintext", function (_, content)
     SILE.call("font", {
-      family = "Noto Serif Hebrew",
+      family = "David CLM",
       size = "12.5pt",
       weight = 700,
       language = "he",
@@ -65,7 +65,7 @@ function class:registerCommands ()
     SILE.call("smallskip")
     SILE.settings:temporarily(function ()
       SILE.call("font", {
-        family = "Noto Serif Hebrew",
+        family = "David CLM",
         size = "9.5pt",
         weight = 400,
         language = "he",
@@ -80,7 +80,7 @@ function class:registerCommands ()
   -- ═══════════════════════════════════════
   self:registerCommand("sectionbody", function (_, content)
     SILE.call("font", {
-      family = "Noto Serif Hebrew",
+      family = "David CLM",
       size = "12.5pt",
       weight = 700,
       language = "he",
@@ -99,7 +99,7 @@ function class:registerCommands ()
   self:registerCommand("sourcetext", function (_, content)
     SILE.call("thisframedirection", { direction = "RTL" })
     SILE.call("font", {
-      family = "Noto Serif Hebrew",
+      family = "Frank Ruehl CLM",
       size = "8.5pt",
       weight = 400,
       language = "he",
@@ -117,7 +117,7 @@ function class:registerCommands ()
   self:registerCommand("sefer-divider", function (_, _)
     SILE.call("smallskip")
     SILE.settings:temporarily(function ()
-      SILE.call("font", { family = "Noto Serif Hebrew", size = "3.5pt" })
+      SILE.call("font", { family = "David CLM", size = "3.5pt" })
       SILE.call("center", {}, function ()
         SILE.typesetter:typeset("◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆  ◆")
       end)
@@ -141,7 +141,7 @@ function class:registerCommands ()
   self:registerCommand("col-title", function (_, content)
     SILE.settings:temporarily(function ()
       SILE.call("font", {
-        family = "Noto Serif Hebrew",
+        family = "David CLM",
         size = "9.5pt",
         weight = 700,
         language = "he",
@@ -165,7 +165,7 @@ function class:registerCommands ()
   self:registerCommand("sefer-header", function (options, _)
     SILE.settings:temporarily(function ()
       SILE.call("font", {
-        family = "Noto Serif Hebrew",
+        family = "David CLM",
         weight = 700,
         language = "he",
       })

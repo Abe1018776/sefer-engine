@@ -12,7 +12,7 @@ and the distinctive **L-shape "snake flow"** design.
   with `pdfunite` — avoids cross-page reflow issues entirely
 - **L-shape layout**: when one commentary column is longer, the shorter column ends
   and the longer one wraps full-width below — forming an L-shape ("snake flow")
-- **Hebrew RTL**: full right-to-left support with Noto Serif Hebrew and HarfBuzz shaping
+- **Hebrew RTL**: full right-to-left support with David CLM / Frank Ruehl CLM fonts and HarfBuzz shaping
 - **Structured input**: JSON → PDF pipeline, easy to integrate with upstream content tools
 - **Faithful reproduction**: calibrated to match שפע שלמה original page dimensions (170×240mm)
 
@@ -115,14 +115,19 @@ sudo apt install poppler-utils
 
 ### Fonts
 
-Install **Noto Serif Hebrew** (Regular + Bold):
+Install **David CLM** and **Frank Ruehl CLM** from the Culmus project:
 
 ```bash
-# Debian/Ubuntu
-sudo apt install fonts-noto-serif-hebrew
-
-# Or download from https://fonts.google.com/noto/specimen/Noto+Serif+Hebrew
+sudo apt-get install fonts-culmus
 ```
+
+David CLM is used for body text, headers, and section titles.
+Frank Ruehl CLM is used for the smaller source/footnote text in the bottom columns.
+
+### Hebrew language module
+
+A Hebrew language module for SILE is included in the `sile/languages/he/` directory.
+No additional installation is needed — SILE picks it up automatically via `SILE_PATH`.
 
 ## Usage
 
@@ -166,6 +171,8 @@ sefer-engine/
 ├── sile/                  # SILE typesetter
 │   ├── classes/
 │   │   └── sefer.lua      # Custom SILE document class (text styling commands)
+│   ├── languages/
+│   │   └── he/            # Hebrew language module (hyphenation, messages)
 │   ├── run_sile.sh        # Shell wrapper
 │   ├── test_lshape.sil    # L-shape demo document
 │   └── test_sefer.sil     # Basic test document
