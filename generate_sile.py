@@ -43,9 +43,17 @@ def escape_sile(text: str) -> str:
     # Hebrew punctuation: replace ASCII quotes with proper Hebrew marks
     # Double quote → gershayim (״)
     text = text.replace('"', '\u05F4')
-    # Single quote → geresh (׳) BUT only when not part of a word
-    # Careful: don't replace apostrophes inside Yiddish words
+    # Single quote → geresh (׳)
     text = text.replace("'", '\u05F3')
+
+    # Replace ASCII hyphen between Hebrew chars with maqaf
+    text = text.replace(' - ', ' \u05BE ')
+    text = text.replace('-', '\u05BE')
+
+    # Wrap remaining BiDi-neutral punctuation with RLM (Right-to-Left Mark)
+    RLM = '\u200F'
+    for ch in '()[].:;,':
+        text = text.replace(ch, f'{RLM}{ch}{RLM}')
 
     # Paragraph breaks
     text = text.replace("\n\n", "\n\\par\n")
@@ -108,13 +116,13 @@ def generate_page_sil(page: dict, sile_class_path: str) -> str:
     elif ratio >= 1.55:
         layout = "makor_long"
         # Tzinor is shorter
-        short_h = max(25, tzinor_lines * 3.7 + 14)
+        short_h = max(30, tzinor_lines * 4.0 + 18)
         short_bottom = min(col_top + short_h, page_bottom - 20)
         frames = _frames_makor_long(main_zone_bottom, col_top, short_bottom, page_bottom)
     else:
         layout = "tzinor_long"
         # Makor is shorter
-        short_h = max(25, makor_lines * 3.7 + 14)
+        short_h = max(30, makor_lines * 4.0 + 18)
         short_bottom = min(col_top + short_h, page_bottom - 20)
         frames = _frames_tzinor_long(main_zone_bottom, col_top, short_bottom, page_bottom)
 
@@ -186,7 +194,7 @@ def _frames_makor_long(div_top, col_top, short_bottom, page_bottom):
         f"\\frame[id=mainzone,left=12mm,right=100%pw-14mm,top=22mm,bottom={div_top}mm]",
         f"\\frame[id=tzinor_col,left=12mm,right=50%pw-1mm,top={col_top}mm,bottom={short_bottom}mm]",
         f"\\frame[id=makor_col,left=50%pw+1mm,right=100%pw-14mm,top={col_top}mm,bottom={short_bottom}mm,next=makor_overflow]",
-        f"\\frame[id=makor_overflow,left=12mm,right=100%pw-14mm,top={short_bottom + 1}mm,bottom={page_bottom}mm]",
+        f"\\frame[id=makor_overflow,left=12mm,right=100%pw-14mm,top={short_bottom + 3}mm,bottom={page_bottom}mm]",
     ]
 
 
@@ -196,7 +204,7 @@ def _frames_tzinor_long(div_top, col_top, short_bottom, page_bottom):
         f"\\frame[id=mainzone,left=12mm,right=100%pw-14mm,top=22mm,bottom={div_top}mm]",
         f"\\frame[id=makor_col,left=50%pw+1mm,right=100%pw-14mm,top={col_top}mm,bottom={short_bottom}mm]",
         f"\\frame[id=tzinor_col,left=12mm,right=50%pw-1mm,top={col_top}mm,bottom={short_bottom}mm,next=tzinor_overflow]",
-        f"\\frame[id=tzinor_overflow,left=12mm,right=100%pw-14mm,top={short_bottom + 1}mm,bottom={page_bottom}mm]",
+        f"\\frame[id=tzinor_overflow,left=12mm,right=100%pw-14mm,top={short_bottom + 3}mm,bottom={page_bottom}mm]",
     ]
 
 

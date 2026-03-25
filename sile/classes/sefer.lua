@@ -97,6 +97,7 @@ function class:registerCommands ()
   -- SOURCE TEXT — small regular (bottom columns)
   -- ═══════════════════════════════════════
   self:registerCommand("sourcetext", function (_, content)
+    SILE.call("thisframedirection", { direction = "RTL" })
     SILE.call("font", {
       family = "Noto Serif Hebrew",
       size = "8.5pt",
