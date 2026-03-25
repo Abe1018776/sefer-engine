@@ -49,12 +49,20 @@ def escape_tex(text: str) -> str:
     return text
 
 
-def process_text(text: str) -> str:
-    """Escape text and convert newlines to ConTeXt markup."""
+def process_text(text: str, for_parshape: bool = False) -> str:
+    """Escape text and convert newlines to ConTeXt markup.
+    
+    If for_parshape=True, paragraph breaks use \\vskip instead of \\par
+    to avoid resetting the \\parshape (which only applies to one paragraph).
+    """
     text = escape_tex(text)
-    # Use \par with small vskip instead of \blank (which can behave
-    # differently inside vboxes vs. main text flow)
-    text = text.replace('\n\n', '\n\\par\\vskip 3pt\\noindent\n')
+    if for_parshape:
+        # Inside a \parshape paragraph, we CANNOT use \par because it ends
+        # the paragraph and resets parshape. Replace paragraph breaks with
+        # a simple space — the text flows as one continuous paragraph.
+        text = text.replace('\n\n', ' ')
+    else:
+        text = text.replace('\n\n', '\n\\par\\vskip 3pt\\noindent\n')
     text = text.replace('\n', ' ')
     return text
 
@@ -122,9 +130,11 @@ def gen_final_tex(page: dict, meas: dict) -> str:
     sec_num = page.get('section_number', '')
     sec_text = escape_tex(page.get('section_text', ''))
     mk_title = escape_tex(page.get('makor_title', 'מקור השפע'))
-    mk_text = process_text(page.get('makor_text', ''))
+    mk_text_overlay = process_text(page.get('makor_text', ''), for_parshape=False)
+    mk_text_parshape = process_text(page.get('makor_text', ''), for_parshape=True)
     tz_title = escape_tex(page.get('tzinor_title', 'צינור השפע'))
-    tz_text = process_text(page.get('tzinor_text', ''))
+    tz_text_overlay = process_text(page.get('tzinor_text', ''), for_parshape=False)
+    tz_text_parshape = process_text(page.get('tzinor_text', ''), for_parshape=True)
     
     # Compute parshape from measurements
     tz_ht, mk_ht, bl = meas['tzinor_ht'], meas['makor_ht'], meas['baselineskip']
@@ -164,7 +174,7 @@ def gen_final_tex(page: dict, meas: dict) -> str:
         pfx = f"{sec_num}. " if sec_num else ""
         tex += f"{{\\bf {pfx}{sec_text}}}\n\\blank[medium]\n"
 
-    # Separator + column headers (always same: makor RIGHT, tzinor LEFT)
+    # Separator + column headers (always: makor RIGHT, tzinor LEFT)
     tex += f"""\\midaligned{{\\tfxx ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆}}
 \\blank[small]
 {{\\bf {mk_title} \\hfill {tz_title}}}
@@ -184,33 +194,39 @@ def gen_final_tex(page: dict, meas: dict) -> str:
     #   Makor (shorter) overlay at phys RIGHT via \naturalhbox\hfill trick  
     #   Tzinor (longer) parshape at phys LEFT (indent=0mm) then full
     
-    # UNIFIED L-SHAPE: Always use the SAME proven pattern:
-    #   Overlay (shorter) at physical LEFT via \hfill\copy0
-    #   Parshape (longer) at physical RIGHT (indent=73mm) then full-width
+    # L-SHAPE with correct column positions:
+    # Standard (makor longer): tzinor overlay at phys LEFT, makor parshape at phys RIGHT
+    # Reversed (tzinor longer): makor overlay at phys RIGHT, tzinor parshape at phys LEFT
     #
-    # For standard case (makor longer): overlay=tzinor, parshape=makor (correct positions)
-    # For reversed case (tzinor longer): overlay=makor, parshape=tzinor
-    #   In this case makor overlay ends up at physical LEFT (under tzinor header)
-    #   and tzinor parshape at physical RIGHT (under makor header).
-    #   We accept this position swap since the alternative causes overlap bugs.
-    #   The column headers still indicate which content is which.
+    # KEY FIX: parshape content must NOT contain \par which resets parshape!
+    # Using for_parshape=True ensures paragraph breaks use \vskip instead.
     
     if makor_longer:
-        overlay_content = tz_text
-        parshape_content = mk_text
-    else:
-        overlay_content = mk_text
-        parshape_content = tz_text
-    
-    tex += f"""% L-shape: {'makor' if makor_longer else 'tzinor'} longer
-% Overlay (shorter) at physical LEFT, parshape (longer) at physical RIGHT then FULL
-\\setbox0=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {overlay_content}\\par}}
+        # Standard: tzinor overlay LEFT (\hfill\copy), makor parshape RIGHT (indent=73mm)
+        tex += f"""% L-shape: makor longer (standard)
+\\setbox0=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {tz_text_overlay}\\par}}
 \\vbox to 0pt{{\\hbox to \\hsize{{\\hfill\\copy0}}\\vss}}%
 \\nointerlineskip
 {{\\tfx
 {parshape}
 \\noindent
-{parshape_content}
+{mk_text_parshape}
+\\par}}
+"""
+    else:
+        # Reversed: makor overlay RIGHT (\copy\hfill), tzinor parshape LEFT (indent=0mm)
+        ps_lines_rev = [f"  0mm {COL_W}mm" for _ in range(narrow)]
+        ps_lines_rev += [f"  0mm {TEXT_W}mm" for _ in range(80)]
+        parshape_rev = f"\\parshape {total}\n" + "\n".join(ps_lines_rev)
+        
+        tex += f"""% L-shape: tzinor longer (reversed)
+\\setbox0=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {mk_text_overlay}\\par}}
+\\vbox to 0pt{{\\hbox to \\hsize{{\\copy0\\hfill}}\\vss}}%
+\\nointerlineskip
+{{\\tfx
+{parshape_rev}
+\\noindent
+{tz_text_parshape}
 \\par}}
 """
 
