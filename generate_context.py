@@ -44,6 +44,20 @@ def escape_tex(text: str) -> str:
         return ""
     # Hebrew gershayim: letter"letter → letter״letter
     text = re.sub(r'(?<=\w)"(?=\w)', '״', text)
+    
+    # Fix RTL bracket/paren mirroring:
+    # Source text has brackets in VISUAL Hebrew order (as they appear in the book).
+    # ConTeXt's BiDi algorithm mirrors them again, causing double-flip.
+    # Swap them in the source so after BiDi mirroring they appear correct.
+    # ( → ) and ) → ( in the source, so BiDi renders them as intended
+    text = text.replace('(', '\x00LPAREN\x00').replace(')', '(').replace('\x00LPAREN\x00', ')')
+    text = text.replace('[', '\x00LBRACK\x00').replace(']', '[').replace('\x00LBRACK\x00', ']')
+    
+    # Remaining standalone " are quotation marks.
+    # Remove them — Hebrew seforim typically don't use Western-style quotes.
+    # The text meaning is preserved by context.
+    text = text.replace('"', '')
+    
     for ch in ['&', '#', '$', '%', '_']:
         text = text.replace(ch, '\\' + ch)
     return text
