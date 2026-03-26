@@ -146,23 +146,52 @@ PREAMBLE = f"""% ─── Page geometry (Vilna-style sefer) ──────�
 """
 
 
+def detect_column_mode(page: dict) -> str:
+    """Detect whether page uses dual-column, single-column, or no-column mode.
+    
+    Returns: 'dual', 'makor_only', 'tzinor_only', or 'none'
+    """
+    has_mk = bool(page.get('makor_text', '').strip())
+    has_tz = bool(page.get('tzinor_text', '').strip())
+    if has_mk and has_tz:
+        return 'dual'
+    elif has_mk:
+        return 'makor_only'
+    elif has_tz:
+        return 'tzinor_only'
+    return 'none'
+
+
 def gen_measure_tex(page: dict) -> str:
     """Pass 1: measure both column heights and write to .measurements file."""
     pid = page['id']
     tz = process_text(page.get('tzinor_text', ''))
     mk = process_text(page.get('makor_text', ''))
+    mode = detect_column_mode(page)
+    
+    # For single-column mode, measure at full page width
+    if mode == 'makor_only':
+        mk_hsize = f"{TEXT_W}mm"
+        tz_hsize = f"{COL_W}mm"
+    elif mode == 'tzinor_only':
+        mk_hsize = f"{COL_W}mm"
+        tz_hsize = f"{TEXT_W}mm"
+    else:
+        mk_hsize = f"{COL_W}mm"
+        tz_hsize = f"{COL_W}mm"
     
     return f"""{PREAMBLE}
 \\starttext
 
-\\setbox0=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {tz}\\par}}
-\\setbox2=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {mk}\\par}}
+\\setbox0=\\vbox{{\\hsize={tz_hsize} \\setupalign[r2l,hz,hanging] \\tfx\\noindent {tz}\\par}}
+\\setbox2=\\vbox{{\\hsize={mk_hsize} \\setupalign[r2l,hz,hanging] \\tfx\\noindent {mk}\\par}}
 
 \\newwrite\\measfile
 \\immediate\\openout\\measfile={pid}.measurements
 \\immediate\\write\\measfile{{tzinor_ht=\\the\\dimexpr\\ht0+\\dp0\\relax}}
 \\immediate\\write\\measfile{{makor_ht=\\the\\dimexpr\\ht2+\\dp2\\relax}}
 \\immediate\\write\\measfile{{baselineskip=\\the\\baselineskip}}
+\\immediate\\write\\measfile{{mode={mode}}}
 \\immediate\\closeout\\measfile
 
 .
@@ -177,14 +206,28 @@ def parse_measurements(path: Path) -> dict:
         if '=' not in line:
             continue
         key, val = line.split('=', 1)
-        # Parse "74.259pt" → 74.259
-        val = val.strip().replace('pt', '')
-        data[key.strip()] = float(val)
+        key = key.strip()
+        val = val.strip()
+        # Non-numeric fields (like mode=makor_only) stored as strings
+        if val.replace('.', '').replace('-', '').replace('pt', '').strip().isdigit() or 'pt' in val:
+            val = val.replace('pt', '')
+            try:
+                data[key] = float(val)
+            except ValueError:
+                data[key] = val
+        else:
+            data[key] = val
     return data
 
 
 def gen_final_tex(page: dict, meas: dict) -> str:
-    """Pass 2: generate production .tex with dynamically-computed \\parshape."""
+    """Pass 2: generate production .tex with dynamically-computed \\parshape.
+    
+    Supports three modes:
+    - dual: Both columns present → L-shape layout
+    - makor_only / tzinor_only: Single full-width column
+    - none: No column content (rare edge case)
+    """
     
     hdr = page.get('header', {})
     main_text = escape_tex(page.get('main_text', ''))
@@ -198,23 +241,8 @@ def gen_final_tex(page: dict, meas: dict) -> str:
     tz_text_overlay = process_text(page.get('tzinor_text', ''), for_parshape=False)
     tz_text_parshape = process_text(page.get('tzinor_text', ''), for_parshape=True)
     
-    # Compute parshape from measurements
+    mode = detect_column_mode(page)
     tz_ht, mk_ht, bl = meas['tzinor_ht'], meas['makor_ht'], meas['baselineskip']
-    makor_longer = mk_ht >= tz_ht
-    # Use the LONGER column's height to determine narrow lines
-    # (narrow lines = how many lines the PARSHAPE column stays narrow)
-    # The shorter column is the OVERLAY, so narrow must cover the overlay height
-    overlay_ht = tz_ht if makor_longer else mk_ht
-    narrow = math.ceil(overlay_ht / bl) + 4  # generous safety margin
-    total = narrow + 80  # plenty of full-width lines
-    
-    info = f"{'makor' if makor_longer else 'tzinor'} longer"
-    print(f"    {info}: tz={tz_ht:.1f}pt mk={mk_ht:.1f}pt bl={bl:.1f}pt → {narrow} narrow lines")
-    
-    # Always use same indent pattern: narrow at physical RIGHT (73mm indent)
-    ps_lines = [f"  {NARROW_INDENT}mm {COL_W}mm" for _ in range(narrow)]
-    ps_lines += [f"  0mm {TEXT_W}mm" for _ in range(80)]
-    parshape = f"\\parshape {total}\n" + "\n".join(ps_lines)
     
     # ─── Assemble .tex ─────────────────────────────────────────
     hdr_right = escape_tex(hdr.get('right', ''))      # page number (outer)
@@ -222,7 +250,7 @@ def gen_final_tex(page: dict, meas: dict) -> str:
     hdr_center_l = escape_tex(hdr.get('center_left', ''))   # section name
     hdr_left = escape_tex(hdr.get('left', ''))         # "שלמה" (outer)
     
-    tex = f"""% Sefer Engine — Page {page.get('page_display', '?')}
+    tex = f"""% Sefer Engine — Page {page.get('page_display', '?')} (mode: {mode})
 {PREAMBLE}
 \\starttext
 
@@ -257,38 +285,31 @@ def gen_final_tex(page: dict, meas: dict) -> str:
 \\vskip 3pt
 \\useMPgraphic{{separator}}
 \\vskip 4pt
-% Column headers (bold, slightly larger than body)
+"""
+
+    if mode == 'dual':
+        # ─── DUAL COLUMN: L-SHAPE ─────────────────────────────
+        tex += f"""% Column headers (bold, slightly larger than body)
 {{\\ColHeaderFont {mk_title} \\hfill {tz_title}}}
 \\vskip 3pt
 \\setupindenting[yes,5mm,first]
 """
-
-    # ─── L-SHAPE ───────────────────────────────────────────────
-    # Column positions (fixed by book layout):
-    #   Physical LEFT  = visual LEFT  = "צינור השפע" (tzinor)
-    #   Physical RIGHT = visual RIGHT = "מקור השפע" (makor)
-    #
-    # Standard (makor longer):
-    #   Tzinor (shorter) overlay at phys LEFT via \hfill\copy
-    #   Makor (longer) parshape at phys RIGHT (indent=73mm) then full
-    #
-    # Reversed (tzinor longer):
-    #   Makor (shorter) overlay at phys RIGHT via \naturalhbox\hfill trick  
-    #   Tzinor (longer) parshape at phys LEFT (indent=0mm) then full
-    
-    # L-SHAPE with correct column positions:
-    # Standard (makor longer): tzinor overlay at phys LEFT, makor parshape at phys RIGHT
-    # Reversed (tzinor longer): makor overlay at phys RIGHT, tzinor parshape at phys LEFT
-    #
-    # KEY FIX: parshape content must NOT contain \par which resets parshape!
-    # Using for_parshape=True ensures paragraph breaks use \vskip instead.
-    
-    # Disable indenting for parshape columns (parshape handles positioning)
-    tex += "\\setupindenting[no]\n"
-    
-    if makor_longer:
-        # Standard: tzinor overlay LEFT (\hfill\copy), makor parshape RIGHT
-        tex += f"""% L-shape: makor longer (standard)
+        makor_longer = mk_ht >= tz_ht
+        overlay_ht = tz_ht if makor_longer else mk_ht
+        narrow = math.ceil(overlay_ht / bl) + 4  # generous safety margin
+        total = narrow + 80
+        
+        info = f"{'makor' if makor_longer else 'tzinor'} longer"
+        print(f"    {info}: tz={tz_ht:.1f}pt mk={mk_ht:.1f}pt bl={bl:.1f}pt → {narrow} narrow lines")
+        
+        ps_lines = [f"  {NARROW_INDENT}mm {COL_W}mm" for _ in range(narrow)]
+        ps_lines += [f"  0mm {TEXT_W}mm" for _ in range(80)]
+        parshape = f"\\parshape {total}\n" + "\n".join(ps_lines)
+        
+        tex += "\\setupindenting[no]\n"
+        
+        if makor_longer:
+            tex += f"""% L-shape: makor longer (standard)
 \\setbox0=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {tz_text_overlay}\\par}}
 \\vbox to 0pt{{\\hbox to \\hsize{{\\hfill\\copy0}}\\vss}}%
 \\nointerlineskip
@@ -298,13 +319,12 @@ def gen_final_tex(page: dict, meas: dict) -> str:
 {mk_text_parshape}
 \\par}}
 """
-    else:
-        # Reversed: makor overlay RIGHT (\copy\hfill), tzinor parshape LEFT (indent=0mm)
-        ps_lines_rev = [f"  0mm {COL_W}mm" for _ in range(narrow)]
-        ps_lines_rev += [f"  0mm {TEXT_W}mm" for _ in range(80)]
-        parshape_rev = f"\\parshape {total}\n" + "\n".join(ps_lines_rev)
-        
-        tex += f"""% L-shape: tzinor longer (reversed)
+        else:
+            ps_lines_rev = [f"  0mm {COL_W}mm" for _ in range(narrow)]
+            ps_lines_rev += [f"  0mm {TEXT_W}mm" for _ in range(80)]
+            parshape_rev = f"\\parshape {total}\n" + "\n".join(ps_lines_rev)
+            
+            tex += f"""% L-shape: tzinor longer (reversed)
 \\setbox0=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {mk_text_overlay}\\par}}
 \\vbox to 0pt{{\\hbox to \\hsize{{\\copy0\\hfill}}\\vss}}%
 \\nointerlineskip
@@ -314,6 +334,31 @@ def gen_final_tex(page: dict, meas: dict) -> str:
 {tz_text_parshape}
 \\par}}
 """
+
+    elif mode == 'makor_only':
+        # ─── SINGLE COLUMN: makor at full width ───────────────
+        print(f"    single-column (makor only): mk={mk_ht:.1f}pt bl={bl:.1f}pt")
+        tex += f"""% Single column: makor only (full width)
+{{\\ColHeaderFont {mk_title}}}
+\\vskip 3pt
+\\setupindenting[no]
+{{\\tfx\\noindent {mk_text_overlay}\\par}}
+"""
+
+    elif mode == 'tzinor_only':
+        # ─── SINGLE COLUMN: tzinor at full width ──────────────
+        print(f"    single-column (tzinor only): tz={tz_ht:.1f}pt bl={bl:.1f}pt")
+        tex += f"""% Single column: tzinor only (full width)
+{{\\ColHeaderFont {tz_title}}}
+\\vskip 3pt
+\\setupindenting[no]
+{{\\tfx\\noindent {tz_text_overlay}\\par}}
+"""
+
+    else:
+        # ─── NO COLUMNS ───────────────────────────────────────
+        print(f"    no column content")
+        tex += "% No column content on this page\n"
 
     tex += "\n\\stoptext\n"
     return tex
@@ -374,20 +419,22 @@ def process_page(page: dict) -> Path:
     return pdf
 
 
-def main():
+def main(json_file: str = None, output_pdf: str = None):
     print("═══ Sefer Engine — ConTeXt Pipeline ═══\n")
     
-    with open(JSON_FILE, 'r', encoding='utf-8') as f:
+    input_path = Path(json_file) if json_file else JSON_FILE
+    
+    with open(input_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     
     pages = data.get('pages', [])
-    print(f"  {len(pages)} pages loaded\n")
+    print(f"  {len(pages)} pages loaded from {input_path}\n")
     
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     
     pdfs = [process_page(p) for p in pages]
     
-    out = OUTPUT_DIR / "sefer_output.pdf"
+    out = Path(output_pdf) if output_pdf else OUTPUT_DIR / "sefer_output.pdf"
     merge_pdfs(pdfs, out)
     print(f"\n═══ Done: {out} ═══")
     return out
@@ -395,7 +442,9 @@ def main():
 
 if __name__ == '__main__':
     try:
-        main()
+        json_arg = sys.argv[1] if len(sys.argv) > 1 else None
+        pdf_arg = sys.argv[2] if len(sys.argv) > 2 else None
+        main(json_arg, pdf_arg)
     except Exception as e:
         print(f"\n✗ Error: {e}", file=sys.stderr)
         import traceback; traceback.print_exc()

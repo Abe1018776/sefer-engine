@@ -1,0 +1,8 @@
+{
+  "page_overrides": {},
+  "global": {
+    "min_body_lines": 2,
+    "min_column_lines": 2,
+    "max_column_imbalance_ratio": 0.3
+  }
+}
