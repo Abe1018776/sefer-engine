@@ -224,22 +224,19 @@ def gen_final_tex(page: dict, meas: dict) -> str:
 {PREAMBLE}
 \\starttext
 
-% ═══ HEADER (Vilna-style) ═══
+% ═══ HEADER ═══
 \\setupindenting[no]
+\\blank[18pt]
 \\hbox to \\hsize{{\\righttoleft%
-  {{\\HeaderFont {hdr_right}}}%
+  {{\\bf\\tfx {hdr_right}}}%
   \\hfill
-  {{\\DisplayTitle {hdr_center_r}}}%
-  \\quad
-  {{\\HeaderFontBold {hdr_center_l}}}%
+  {{\\bf\\tfd {hdr_center_r}}}%
+  \\quad\\quad
+  {{\\bf {hdr_center_l}}}%
   \\hfill
-  {{\\HeaderFont {hdr_left}}}%
+  {{\\bf\\tfd {hdr_left}}}%
 }}
-\\vskip 2pt
-\\useMPgraphic{{headerrule}}
-\\vskip 3pt
-\\midaligned{{\\tfxx ◆}}
-\\vskip 4pt
+\\blank[18pt]
 \\setupindenting[yes,5mm,first]
 """
 
