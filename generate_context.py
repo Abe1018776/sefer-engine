@@ -229,12 +229,12 @@ def gen_final_tex(page: dict, meas: dict) -> str:
 \\blank[18pt]
 \\hbox to \\hsize{{\\righttoleft%
   {{\\bf\\tfx {hdr_right}}}%
+  \\kern 8pt
+  {{\\bf\\tfd {hdr_left}}}%
   \\hfill
-  {{\\bf\\tfd {hdr_center_r}}}%
-  \\quad\\quad
   {{\\bf {hdr_center_l}}}%
   \\hfill
-  {{\\bf\\tfd {hdr_left}}}%
+  {{\\bf\\tfd {hdr_center_r}}}%
 }}
 \\blank[18pt]
 \\setupindenting[yes,5mm,first]
