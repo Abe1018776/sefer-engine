@@ -19,15 +19,19 @@ import subprocess
 import sys
 from pathlib import Path
 
-# ─── Layout constants (mm) ───────────────────────────────────────
-PAPER_W, PAPER_H = 170, 240
-TOP_SPACE, BOTTOM_SPACE, BACK_SPACE = 11, 9, 14
-TEXT_W, TEXT_H = 142, 220
-COL_W = 69          # each column width
-COL_GAP = 4         # gap between columns  
-NARROW_INDENT = 73  # COL_W + COL_GAP
+# ─── Layout constants ────────────────────────────────────────────
+# Page: 468×666pt ≈ 165×235mm — matches original Vilna-style sefer
+PAPER_W_PT, PAPER_H_PT = 468, 666
+TOP_SPACE, BOTTOM_SPACE, BACK_SPACE = 10, 8, 13  # mm
+TEXT_W, TEXT_H = 139, 217                          # mm
+COL_W = 67.75       # each column width (mm)
+COL_GAP = 3.5       # gap between columns (mm)
+NARROW_INDENT = 71.25  # COL_W + COL_GAP
 
-FONT_FAMILY = "David CLM"
+# Font stack — Vilna-style Hebrew sefer design
+BODY_FONT = "Frank Ruehl CLM"     # body text (closest free match to BAVilna)
+DISPLAY_FONT = "Shofar"           # decorative display title
+HEADER_FONT = "Noto Serif Hebrew" # running headers / page numbers
 BODY_SIZE = "12pt"
 OSFONTDIR = "/usr/share/fonts/truetype/culmus:/usr/share/fonts/truetype/noto"
 
@@ -94,7 +98,8 @@ def process_text(text: str, for_parshape: bool = False) -> str:
 
 # ─── ConTeXt templates ───────────────────────────────────────────
 
-PREAMBLE = f"""\\definepapersize[seferpage][width={PAPER_W}mm,height={PAPER_H}mm]
+PREAMBLE = f"""% ─── Page geometry (Vilna-style sefer) ───────────────────────────
+\\definepapersize[seferpage][width={PAPER_W_PT}pt,height={PAPER_H_PT}pt]
 \\setuppapersize[seferpage]
 \\setuplayout[
   topspace={TOP_SPACE}mm, bottomspace={BOTTOM_SPACE}mm, backspace={BACK_SPACE}mm,
@@ -102,10 +107,40 @@ PREAMBLE = f"""\\definepapersize[seferpage][width={PAPER_W}mm,height={PAPER_H}mm
 ]
 \\mainlanguage[he]
 \\setupalign[r2l,hz,hanging]
-\\definefontfamily[hebrewfont][rm][{FONT_FAMILY}]
-\\setupbodyfont[hebrewfont,{BODY_SIZE}]
-\\setupindenting[no]
+
+% ─── Font stack ─────────────────────────────────────────────────
+% Body: Frank Ruehl CLM (classic sefer typeface)
+\\definefontfamily[seferfont][rm][{BODY_FONT}]
+\\setupbodyfont[seferfont,{BODY_SIZE}]
+
+% Display title font: Shofar (decorative, for "שפע" header)
+\\definefont[DisplayTitle][name:shofardemibold*default at 28pt]
+
+% Header/page-number font: Noto Serif Hebrew
+\\definefont[HeaderFont][name:notoserifhebrewregular*default at 9pt]
+\\definefont[HeaderFontBold][name:notoserifhebrewsemibold*default at 9pt]
+
+% Column header font: Frank Ruehl Bold, slightly larger than column body
+\\definefont[ColHeaderFont][name:frankruehlclmbold*default at 11pt]
+
+% ─── Typography ─────────────────────────────────────────────────
+\\setupinterlinespace[line=14.5pt]
+\\setupindenting[yes,5mm,first]
 \\setuppagenumbering[state=stop]
+
+% ─── Ornamental rules (MetaPost; \\hrule crashes in RTL) ────────
+\\startuseMPgraphic{{headerrule}}
+  draw (0,0) -- (\\the\\hsize,0) withpen pencircle scaled 0.4pt;
+\\stopuseMPgraphic
+
+\\startuseMPgraphic{{separator}}
+  numeric w, dsize;
+  w := \\the\\hsize;
+  dsize := 1.8pt;
+  draw (0,0) -- (w/2 - 8pt, 0) withpen pencircle scaled 0.3pt;
+  fill (w/2,dsize) -- (w/2+dsize,0) -- (w/2,-dsize) -- (w/2-dsize,0) -- cycle;
+  draw (w/2 + 8pt, 0) -- (w, 0) withpen pencircle scaled 0.3pt;
+\\stopuseMPgraphic
 """
 
 
@@ -180,13 +215,32 @@ def gen_final_tex(page: dict, meas: dict) -> str:
     parshape = f"\\parshape {total}\n" + "\n".join(ps_lines)
     
     # ─── Assemble .tex ─────────────────────────────────────────
+    hdr_right = escape_tex(hdr.get('right', ''))      # page number (outer)
+    hdr_center_r = escape_tex(hdr.get('center_right', ''))  # "שפע" (display title)
+    hdr_center_l = escape_tex(hdr.get('center_left', ''))   # section name
+    hdr_left = escape_tex(hdr.get('left', ''))         # "שלמה" (outer)
+    
     tex = f"""% Sefer Engine — Page {page.get('page_display', '?')}
 {PREAMBLE}
 \\starttext
 
-% ═══ HEADER ═══
-{{\\bf\\tfx {escape_tex(hdr.get('right',''))} \\hfill {{\\tfd {escape_tex(hdr.get('center_right',''))}}} \\quad {escape_tex(hdr.get('center_left',''))} \\hfill {escape_tex(hdr.get('left',''))}}}
-\\blank[big]
+% ═══ HEADER (Vilna-style) ═══
+\\setupindenting[no]
+\\hbox to \\hsize{{\\righttoleft%
+  {{\\HeaderFont {hdr_right}}}%
+  \\hfill
+  {{\\DisplayTitle {hdr_center_r}}}%
+  \\quad
+  {{\\HeaderFontBold {hdr_center_l}}}%
+  \\hfill
+  {{\\HeaderFont {hdr_left}}}%
+}}
+\\vskip 2pt
+\\useMPgraphic{{headerrule}}
+\\vskip 3pt
+\\midaligned{{\\tfxx ◆}}
+\\vskip 4pt
+\\setupindenting[yes,5mm,first]
 """
 
     if main_text.strip():
@@ -199,11 +253,15 @@ def gen_final_tex(page: dict, meas: dict) -> str:
         pfx = f"{sec_num}. " if sec_num else ""
         tex += f"{{\\bf {pfx}{sec_text}}}\n\\blank[medium]\n"
 
-    # Separator + column headers (always: makor RIGHT, tzinor LEFT)
-    tex += f"""\\midaligned{{\\tfxx ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆ ◆}}
-\\blank[small]
-{{\\bf {mk_title} \\hfill {tz_title}}}
-\\blank[small]
+    # Separator: elegant thin-rule — diamond — thin-rule (MetaPost)
+    tex += f"""\\setupindenting[no]
+\\vskip 3pt
+\\useMPgraphic{{separator}}
+\\vskip 4pt
+% Column headers (bold, slightly larger than body)
+{{\\ColHeaderFont {mk_title} \\hfill {tz_title}}}
+\\vskip 3pt
+\\setupindenting[yes,5mm,first]
 """
 
     # ─── L-SHAPE ───────────────────────────────────────────────
@@ -226,8 +284,11 @@ def gen_final_tex(page: dict, meas: dict) -> str:
     # KEY FIX: parshape content must NOT contain \par which resets parshape!
     # Using for_parshape=True ensures paragraph breaks use \vskip instead.
     
+    # Disable indenting for parshape columns (parshape handles positioning)
+    tex += "\\setupindenting[no]\n"
+    
     if makor_longer:
-        # Standard: tzinor overlay LEFT (\hfill\copy), makor parshape RIGHT (indent=73mm)
+        # Standard: tzinor overlay LEFT (\hfill\copy), makor parshape RIGHT
         tex += f"""% L-shape: makor longer (standard)
 \\setbox0=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {tz_text_overlay}\\par}}
 \\vbox to 0pt{{\\hbox to \\hsize{{\\hfill\\copy0}}\\vss}}%
