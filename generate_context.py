@@ -19,6 +19,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+# Ensure UTF-8 output on Windows
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 # ─── Layout constants ────────────────────────────────────────────
 # Page: 468×666pt ≈ 165×235mm — matches original Vilna-style sefer
 PAPER_W_PT, PAPER_H_PT = 468, 666
@@ -250,43 +256,50 @@ def gen_final_tex(page: dict, meas: dict) -> str:
         pfx = f"{sec_num}. " if sec_num else ""
         tex += f"{{\\bf {pfx}{sec_text}}}\n\\blank[medium]\n"
 
-    # Separator: elegant thin-rule — diamond — thin-rule (MetaPost)
-    tex += f"""\\setupindenting[no]
-\\vskip 3pt
-\\useMPgraphic{{separator}}
-\\vskip 4pt
-% Column headers (bold, slightly larger than body)
-{{\\ColHeaderFont {mk_title} \\hfill {tz_title}}}
-\\vskip 3pt
-\\setupindenting[yes,5mm,first]
-"""
+    # ─── Column section ─────────────────────────────────────────
+    has_makor  = bool(page.get('makor_text', '').strip())
+    has_tzinor = bool(page.get('tzinor_text', '').strip())
+    layout_type = page.get('_layout', {}).get('type', '') if '_layout' in page else ''
 
-    # ─── L-SHAPE ───────────────────────────────────────────────
-    # Column positions (fixed by book layout):
-    #   Physical LEFT  = visual LEFT  = "צינור השפע" (tzinor)
-    #   Physical RIGHT = visual RIGHT = "מקור השפע" (makor)
-    #
-    # Standard (makor longer):
-    #   Tzinor (shorter) overlay at phys LEFT via \hfill\copy
-    #   Makor (longer) parshape at phys RIGHT (indent=73mm) then full
-    #
-    # Reversed (tzinor longer):
-    #   Makor (shorter) overlay at phys RIGHT via \naturalhbox\hfill trick  
-    #   Tzinor (longer) parshape at phys LEFT (indent=0mm) then full
-    
-    # L-SHAPE with correct column positions:
-    # Standard (makor longer): tzinor overlay at phys LEFT, makor parshape at phys RIGHT
-    # Reversed (tzinor longer): makor overlay at phys RIGHT, tzinor parshape at phys LEFT
-    #
-    # KEY FIX: parshape content must NOT contain \par which resets parshape!
-    # Using for_parshape=True ensures paragraph breaks use \vskip instead.
-    
-    # Disable indenting for parshape columns (parshape handles positioning)
-    tex += "\\setupindenting[no]\n"
-    
-    if makor_longer:
-        # Standard: tzinor overlay LEFT (\hfill\copy), makor parshape RIGHT
-        tex += f"""% L-shape: makor longer (standard)
+    # Determine render mode
+    if not has_makor and not has_tzinor:
+        render_mode = 'none'
+    elif layout_type == 'makor_only' or (has_makor and not has_tzinor):
+        render_mode = 'single_makor'
+    elif layout_type == 'tzinor_only' or (has_tzinor and not has_makor):
+        render_mode = 'single_tzinor'
+    else:
+        render_mode = 'lshape'  # balanced, makor_long, tzinor_long
+
+    if render_mode != 'none':
+        # Separator: thin-rule — diamond — thin-rule (MetaPost)
+        tex += "\\setupindenting[no]\n\\vskip 3pt\n\\useMPgraphic{separator}\n\\vskip 4pt\n"
+
+        if render_mode == 'single_makor':
+            # Single full-width makor column
+            tex += f"\\midaligned{{\\ColHeaderFont {mk_title}}}\n\\vskip 3pt\n"
+            tex += f"{{\\tfx\\setupalign[r2l,hz,hanging]\\noindent {mk_text_overlay}\\par}}\n"
+
+        elif render_mode == 'single_tzinor':
+            # Single full-width tzinor column
+            tex += f"\\midaligned{{\\ColHeaderFont {tz_title}}}\n\\vskip 3pt\n"
+            tex += f"{{\\tfx\\setupalign[r2l,hz,hanging]\\noindent {tz_text_overlay}\\par}}\n"
+
+        else:
+            # Two-column L-shape layout
+            # Column positions (fixed by book layout):
+            #   Physical LEFT  = visual LEFT  = "צינור השפע" (tzinor)
+            #   Physical RIGHT = visual RIGHT = "מקור השפע" (makor)
+            #
+            # KEY: parshape content must NOT contain \par (resets parshape).
+            # for_parshape=True replaces paragraph breaks with \vskip.
+            tex += f"{{\\ColHeaderFont {mk_title} \\hfill {tz_title}}}\n\\vskip 3pt\n"
+            tex += "\\setupindenting[yes,5mm,first]\n"
+            tex += "\\setupindenting[no]\n"
+
+            if makor_longer:
+                # Standard: tzinor overlay LEFT, makor parshape RIGHT
+                tex += f"""% L-shape: makor longer (standard)
 \\setbox0=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {tz_text_overlay}\\par}}
 \\vbox to 0pt{{\\hbox to \\hsize{{\\hfill\\copy0}}\\vss}}%
 \\nointerlineskip
@@ -296,13 +309,13 @@ def gen_final_tex(page: dict, meas: dict) -> str:
 {mk_text_parshape}
 \\par}}
 """
-    else:
-        # Reversed: makor overlay RIGHT (\copy\hfill), tzinor parshape LEFT (indent=0mm)
-        ps_lines_rev = [f"  0mm {COL_W}mm" for _ in range(narrow)]
-        ps_lines_rev += [f"  0mm {TEXT_W}mm" for _ in range(80)]
-        parshape_rev = f"\\parshape {total}\n" + "\n".join(ps_lines_rev)
-        
-        tex += f"""% L-shape: tzinor longer (reversed)
+            else:
+                # Reversed: makor overlay RIGHT, tzinor parshape LEFT
+                ps_lines_rev = [f"  0mm {COL_W}mm" for _ in range(narrow)]
+                ps_lines_rev += [f"  0mm {TEXT_W}mm" for _ in range(80)]
+                parshape_rev = f"\\parshape {total}\n" + "\n".join(ps_lines_rev)
+
+                tex += f"""% L-shape: tzinor longer (reversed)
 \\setbox0=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {mk_text_overlay}\\par}}
 \\vbox to 0pt{{\\hbox to \\hsize{{\\copy0\\hfill}}\\vss}}%
 \\nointerlineskip
@@ -344,6 +357,34 @@ def merge_pdfs(pdfs: list, out: Path):
     print(f"\n  ✓ Merged {len(pdfs)} pages → {out.name}")
 
 
+# ─── Solver wiring ────────────────────────────────────────────────
+
+def _run_solver(data: dict, font_body: str = '', font_col: str = '') -> list:
+    """Run the PageSolver on unpaginated input data and return a list of page dicts."""
+    import importlib.util, sys as _sys
+
+    # Support running from repo root where engine/ is a subdirectory (not installed package)
+    engine_dir = str(BASE_DIR)
+    if engine_dir not in _sys.path:
+        _sys.path.insert(0, engine_dir)
+
+    from engine.solver import PageSolver, SolverConfig
+    from engine.measure import FontConfig, PageMeasurer
+
+    if font_body:
+        font_config = FontConfig.from_paths(
+            body_path=font_body,
+            column_path=font_col or font_body,
+        )
+        measurer = PageMeasurer(font_config)
+    else:
+        # No font paths provided — use fallback character-count estimator
+        measurer = None
+
+    solver = PageSolver(data, SolverConfig(), measurer=measurer)
+    return solver.solve()
+
+
 # ─── Main pipeline ────────────────────────────────────────────────
 
 def process_page(page: dict) -> Path:
@@ -372,20 +413,50 @@ def process_page(page: dict) -> Path:
     return pdf
 
 
-def main():
+def main(argv=None):
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='Sefer Engine — ConTeXt pipeline: JSON → PDF',
+    )
+    parser.add_argument(
+        'input', nargs='?', default=str(JSON_FILE),
+        help='Path to input JSON (paginated pages[] or unpaginated content{})',
+    )
+    parser.add_argument(
+        '--font-body', default='',
+        help='Path to body/bold .ttf/.otf for HarfBuzz measurement (optional)',
+    )
+    parser.add_argument(
+        '--font-col', default='',
+        help='Path to column/regular font (defaults to --font-body if omitted)',
+    )
+    parser.add_argument(
+        '--output', default='',
+        help='Output PDF path (default: <output_dir>/sefer_output.pdf)',
+    )
+    args = parser.parse_args(argv)
+
     print("═══ Sefer Engine — ConTeXt Pipeline ═══\n")
-    
-    with open(JSON_FILE, 'r', encoding='utf-8') as f:
+
+    input_path = Path(args.input)
+    with open(input_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    
-    pages = data.get('pages', [])
-    print(f"  {len(pages)} pages loaded\n")
-    
+
+    # Auto-detect: unpaginated input has a 'content' key; paginated has 'pages'
+    if 'content' in data and 'pages' not in data:
+        print("  Detected unpaginated input — running solver...")
+        pages = _run_solver(data, font_body=args.font_body, font_col=args.font_col)
+        print(f"  Solver produced {len(pages)} pages\n")
+    else:
+        pages = data.get('pages', [])
+        print(f"  {len(pages)} pages loaded\n")
+
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    
+
     pdfs = [process_page(p) for p in pages]
-    
-    out = OUTPUT_DIR / "sefer_output.pdf"
+
+    out = Path(args.output) if args.output else OUTPUT_DIR / "sefer_output.pdf"
     merge_pdfs(pdfs, out)
     print(f"\n═══ Done: {out} ═══")
     return out

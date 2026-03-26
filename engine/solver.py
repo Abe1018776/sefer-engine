@@ -31,6 +31,12 @@ from dataclasses import dataclass, field
 from typing import Optional
 from pathlib import Path
 
+# Ensure UTF-8 output on Windows (cp1252 chokes on Hebrew + box-drawing chars)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 # Try to use real measurements; fall back to estimation
 try:
     from engine.measure import PageMeasurer, FontConfig, FallbackEstimator
