@@ -126,6 +126,11 @@ class TextElement:
     section_number: str = ""
     section_title: str = ""
 
+    # Chapter boundary markers (optional — set from input JSON)
+    chapter_start: str = ""   # Hebrew letter (e.g. "א") if this element opens a new chapter
+    chapter_title: str = ""   # Nikudded chapter title for the banner (e.g. "פֶּרֶק רִאשׁוֹן")
+    chapter_end: bool = False  # True if this element is the last in its chapter
+
     # Splittable flag
     can_split: bool = True
     min_lines_before_split: int = 2  # minimum lines before allowing a split
@@ -262,6 +267,8 @@ class PageSolver:
                 text=sec.get('title', ''),
                 section_number=sec.get('number', ''),
                 section_title=sec.get('title', ''),
+                chapter_start=sec.get('chapter', ''),
+                chapter_title=sec.get('chapter_title', ''),
                 can_split=False,
             )
             title_el.height_pt = self.config.section_title_height_pt
@@ -276,6 +283,7 @@ class PageSolver:
                     kind='section_body',
                     text=body_text.strip(),
                     section_number=sec.get('number', ''),
+                    chapter_end=bool(sec.get('chapter_end', False)),
                 )
                 self._measure_element(body_el, 'body')
                 elements['sections'].append(body_el)
@@ -582,6 +590,16 @@ class PageSolver:
                 if remaining_body_budget <= 0:
                     break
 
+                # Sub-header anchoring: never place a section_title as the last element
+                # on a page — require that at least 2 lines of its section_body also fit.
+                if el.kind == 'section_title' and body_idx + 1 < len(self.body_queue):
+                    next_el = self.body_queue[body_idx + 1]
+                    if next_el.kind == 'section_body':
+                        min_anchor_pt = (el.height_pt + self.config.paragraph_spacing_pt
+                                         + self.config.body_leading_pt * 2)
+                        if min_anchor_pt > remaining_body_budget:
+                            break  # defer title + body together to next page
+
                 if el.height_pt <= remaining_body_budget:
                     page.body_elements.append(el)
                     body_used += el.height_pt + self.config.paragraph_spacing_pt
@@ -799,6 +817,9 @@ class PageSolver:
             section_title = ""
             section_number = ""
             section_text = ""
+            chapter_start = ""
+            chapter_title = ""
+            chapter_end = False
 
             for el in page.body_elements:
                 if el.kind == 'body_intro':
@@ -806,10 +827,15 @@ class PageSolver:
                 elif el.kind == 'section_title':
                     section_title = el.section_title
                     section_number = el.section_number
+                    if el.chapter_start and not chapter_start:
+                        chapter_start = el.chapter_start
+                        chapter_title = el.chapter_title
                 elif el.kind == 'section_body':
                     section_text += el.text + "\n\n"
                     if not section_number:
                         section_number = el.section_number
+                    if el.chapter_end:
+                        chapter_end = True
 
             makor_text = '\n\n'.join(el.text for el in page.makor_elements)
             tzinor_text = '\n\n'.join(el.text for el in page.tzinor_elements)
@@ -832,6 +858,11 @@ class PageSolver:
                 "makor_text": makor_text,
                 "tzinor_title": "צינור השפע",
                 "tzinor_text": tzinor_text,
+
+                # Chapter boundary metadata
+                "chapter_start": chapter_start,
+                "chapter_title": chapter_title,
+                "chapter_end": chapter_end,
 
                 # Layout metadata (for renderer)
                 "_layout": {

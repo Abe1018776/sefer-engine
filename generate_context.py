@@ -147,6 +147,20 @@ PREAMBLE = f"""% ─── Page geometry (Vilna-style sefer) ──────�
   fill (w/2,dsize) -- (w/2+dsize,0) -- (w/2,-dsize) -- (w/2-dsize,0) -- cycle;
   draw (w/2 + 8pt, 0) -- (w, 0) withpen pencircle scaled 0.3pt;
 \\stopuseMPgraphic
+
+% Chapter banner: double-border rectangular frame (drawn around \hbox of known width)
+\\startuseMPgraphic{{chapterbanner}}
+  numeric bw, bh, pad;
+  bw := 0.64 * \\the\\hsize;   % banner width = 64% of text width
+  bh := 34pt;                   % fixed banner height
+  pad := 3.5pt;
+  % Outer border
+  draw (0,0) -- (bw,0) -- (bw,bh) -- (0,bh) -- cycle
+    withpen pencircle scaled 0.35pt;
+  % Inner border (inset by pad)
+  draw (pad,pad) -- (bw-pad,pad) -- (bw-pad,bh-pad) -- (pad,bh-pad) -- cycle
+    withpen pencircle scaled 0.25pt;
+\\stopuseMPgraphic
 """
 
 
@@ -201,6 +215,9 @@ def gen_final_tex(page: dict, meas: dict) -> str:
     tz_title = escape_tex(page.get('tzinor_title', 'צינור השפע'))
     tz_text_overlay = process_text(page.get('tzinor_text', ''), for_parshape=False)
     tz_text_parshape = process_text(page.get('tzinor_text', ''), for_parshape=True)
+    chapter_start = page.get('chapter_start', '')
+    chapter_title = escape_tex(page.get('chapter_title', ''))
+    chapter_end = bool(page.get('chapter_end', False))
     
     # Compute parshape from measurements
     tz_ht, mk_ht, bl = meas['tzinor_ht'], meas['makor_ht'], meas['baselineskip']
@@ -245,6 +262,28 @@ def gen_final_tex(page: dict, meas: dict) -> str:
 \\blank[18pt]
 \\setupindenting[yes,5mm,first]
 """
+
+    # ─── Chapter opener banner ───────────────────────────────────
+    # Appears at the top of any page that starts a new פרק.
+    # Double-border frame (MetaPost) centered on page, with פרק number
+    # and nikudded chapter title inside.
+    if chapter_start:
+        ch_num = escape_tex(chapter_start)
+        tex += "\\blank[medium]\n"
+        # Overlay the MetaPost frame, then center the text on top of it
+        tex += f"""\\hbox to \\hsize{{\\hfill
+  \\vbox{{%
+    \\hsize=0.64\\hsize
+    \\useMPgraphic{{chapterbanner}}%
+    \\vskip -28pt
+    \\midaligned{{\\righttoleft{{\\bf\\tfb פרק {ch_num}}}}}%
+    \\vskip 3pt
+    \\midaligned{{\\righttoleft{{\\tfa {chapter_title}}}}}%
+    \\vskip 4pt
+  }}%
+\\hfill}}
+"""
+        tex += "\\blank[medium]\n"
 
     if main_text.strip():
         tex += f"{{\\bf {main_text}}}\n\\blank[small]\n"
@@ -299,11 +338,13 @@ def gen_final_tex(page: dict, meas: dict) -> str:
 
             if makor_longer:
                 # Standard: tzinor overlay LEFT, makor parshape RIGHT
+                # \setupalign[r2l] explicit in parshape group — prevents BiDi
+                # corruption in the full-width overflow lines.
                 tex += f"""% L-shape: makor longer (standard)
 \\setbox0=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {tz_text_overlay}\\par}}
 \\vbox to 0pt{{\\hbox to \\hsize{{\\hfill\\copy0}}\\vss}}%
 \\nointerlineskip
-{{\\tfx
+{{\\tfx\\setupalign[r2l,hz,hanging]
 {parshape}
 \\noindent
 {mk_text_parshape}
@@ -319,12 +360,19 @@ def gen_final_tex(page: dict, meas: dict) -> str:
 \\setbox0=\\vbox{{\\hsize={COL_W}mm \\setupalign[r2l,hz,hanging] \\tfx\\noindent {mk_text_overlay}\\par}}
 \\vbox to 0pt{{\\hbox to \\hsize{{\\copy0\\hfill}}\\vss}}%
 \\nointerlineskip
-{{\\tfx
+{{\\tfx\\setupalign[r2l,hz,hanging]
 {parshape_rev}
 \\noindent
 {tz_text_parshape}
 \\par}}
 """
+
+    # ─── Chapter-end ornament ────────────────────────────────────
+    # Appears after the last content on a chapter's final page.
+    # The rest of the page is intentional whitespace (no \vfill needed —
+    # the solver already gives this page a loose slack budget).
+    if chapter_end:
+        tex += "\n\\blank[big]\n\\midaligned{{\\tfb ✿}}\n\\blank[big]\n"
 
     tex += "\n\\stoptext\n"
     return tex
