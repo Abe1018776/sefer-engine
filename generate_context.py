@@ -63,6 +63,16 @@ def escape_tex(text: str) -> str:
     return text
 
 
+def bold_markers(text: str) -> str:
+    """Make entry markers like [א], [ב], [ג] and reference numbers bold.
+    Called AFTER escape_tex, so brackets are swapped: [א] → ]א[ in source."""
+    # Bold the tzinor markers: ]letter[ (swapped brackets) anywhere in text
+    text = re.sub(r'(\][א-ת]{1,2}\[)', r'{\\bf \1}', text)
+    # Bold the makor entry IDs at start of lines: יז. or כא. or iט.
+    text = re.sub(r'(?m)^(i?[א-ת]{1,3}\.)', r'{\\bf \1}', text)
+    return text
+
+
 def process_text(text: str, for_parshape: bool = False) -> str:
     """Escape text and convert newlines to ConTeXt markup.
     
@@ -70,6 +80,7 @@ def process_text(text: str, for_parshape: bool = False) -> str:
     to avoid resetting the \\parshape (which only applies to one paragraph).
     """
     text = escape_tex(text)
+    text = bold_markers(text)  # after escape_tex; regex matches swapped brackets
     if for_parshape:
         # Inside a \parshape paragraph, we CANNOT use \par because it ends
         # the paragraph and resets parshape. Replace paragraph breaks with
