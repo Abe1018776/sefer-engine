@@ -109,8 +109,10 @@ PREAMBLE = f"""% ─── Page geometry (Vilna-style sefer) ──────�
 \\setupalign[r2l,hz,hanging]
 
 % ─── Font stack ─────────────────────────────────────────────────
-% Body: Frank Ruehl CLM (classic sefer typeface)
-\\definefontfamily[seferfont][rm][{BODY_FONT}]
+% Body: Frank Ruehl CLM with Noto Serif Hebrew fallback
+% (Frank Ruehl CLM lacks U+05F3 geresh and U+05F4 gershayim)
+\\definefontfallback[hebrewpunct][name:notoserifhebrew*default][0x0590-0x05FF][force=yes]
+\\definefontfamily[seferfont][rm][{BODY_FONT}][fallbacks=hebrewpunct]
 \\setupbodyfont[seferfont,{BODY_SIZE}]
 
 % Display title font: Shofar (decorative, for "שפע" header)
