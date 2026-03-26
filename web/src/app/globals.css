@@ -1,0 +1,410 @@
+@import "tailwindcss";
+
+/* ─── Design Tokens ─────────────────────────────────────────────────────── */
+
+:root {
+  --background: #f5f0e5;
+  --foreground: #2a1f14;
+  --gold: #b8963e;
+  --gold-light: #d4c48c;
+  --gold-pale: #e8dbb4;
+  --gold-dark: #8a6d2a;
+}
+
+@theme inline {
+  --font-family-sans: var(--font-frank), 'Frank Ruhl Libre', Georgia, serif;
+  --font-family-serif: var(--font-frank), 'Frank Ruhl Libre', Georgia, serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-frank), 'Frank Ruhl Libre', Georgia, serif;
+  margin: 0;
+  padding: 0;
+  line-height: 1.75;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d4c48c; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #b8963e; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SEFER VIEWER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.sefer-viewer-shell {
+  min-height: 100vh;
+  background: #1e140c;
+  background-image:
+    radial-gradient(ellipse at 50% 0%, rgba(184,150,62,0.12) 0%, transparent 60%),
+    radial-gradient(ellipse at 50% 100%, rgba(184,150,62,0.06) 0%, transparent 50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.25rem 1rem 3rem;
+  font-family: var(--font-frank), 'Frank Ruhl Libre', Georgia, serif;
+}
+
+/* ─── Controls ──────────────────────────────────────────────────────────── */
+
+.sefer-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding: 0.5rem 1rem;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(184,150,62,0.25);
+  border-radius: 6px;
+  color: #d4c48c;
+  font-size: 0.88rem;
+  width: 100%;
+  max-width: 580px;
+  justify-content: center;
+}
+
+.sefer-book-select {
+  background: #2e1e10;
+  color: #d4c48c;
+  border: 1px solid #b8963e;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.sefer-nav { display: flex; align-items: center; gap: 0.6rem; }
+
+.sefer-nav-btn {
+  background: transparent;
+  border: 1px solid rgba(184,150,62,0.5);
+  color: #d4c48c;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: background 0.15s, border-color 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sefer-nav-btn:hover:not(:disabled) {
+  background: rgba(184,150,62,0.2);
+  border-color: #b8963e;
+}
+.sefer-nav-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+
+.sefer-page-indicator {
+  font-size: 1rem;
+  min-width: 4rem;
+  text-align: center;
+  color: #e8dbb4;
+  letter-spacing: 0.04em;
+}
+
+.sefer-total-label { font-size: 0.75rem; color: #7a6840; }
+
+.sefer-export-btns { display: flex; gap: 0.35rem; margin-right: auto; }
+
+.sefer-export-btn {
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  text-decoration: none;
+  border: 1px solid rgba(184,150,62,0.4);
+  color: #d4c48c;
+  background: transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.sefer-export-btn:hover { background: rgba(184,150,62,0.15); }
+.sefer-export-btn-pdf { background: rgba(184,150,62,0.12); font-weight: 600; }
+
+/* ─── Stage ─────────────────────────────────────────────────────────────── */
+
+.sefer-stage { width: 100%; max-width: 580px; }
+
+.sefer-state-msg {
+  min-height: 500px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c4a44a;
+  font-size: 1.05rem;
+}
+.sefer-state-error { color: #c0392b; }
+
+/* ─── The Page ──────────────────────────────────────────────────────────── */
+
+.sefer-page {
+  background: #FAF6EE;
+  color: #18100a;
+  width: 100%;
+  min-height: 720px;
+  padding: 1.5rem 1.75rem 1.75rem;
+  border: 1px solid #c4a44a;
+  outline: 3px solid #FAF6EE;
+  outline-offset: -5px;
+  box-shadow:
+    inset 0 0 0 5px #FAF6EE,
+    inset 0 0 0 6px rgba(196,164,74,0.35),
+    0 12px 48px rgba(0,0,0,0.6),
+    0 3px 12px rgba(0,0,0,0.35);
+  position: relative;
+}
+
+/* ─── Page Header ───────────────────────────────────────────────────────── */
+
+.sefer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: #18100a;
+  padding-bottom: 0.35rem;
+  direction: rtl;
+}
+.sefer-header-num {
+  font-weight: 700;
+  font-size: 0.95rem;
+  min-width: 1.4rem;
+  text-align: center;
+  flex-shrink: 0;
+}
+.sefer-header-word { font-weight: 700; font-size: 0.95rem; padding: 0 0.4rem; flex-shrink: 0; }
+.sefer-header-gate { font-size: 0.8rem; padding: 0 0.4rem; flex-shrink: 0; color: #4a3520; }
+.sefer-header-rule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to left, rgba(196,164,74,0.2), rgba(196,164,74,0.8), rgba(196,164,74,0.2));
+  min-width: 8px;
+}
+.sefer-header-underline {
+  height: 2px;
+  background: linear-gradient(to left, transparent 0%, #c4a44a 15%, #c4a44a 85%, transparent 100%);
+  margin-bottom: 0.8rem;
+}
+
+/* ─── Section Area ──────────────────────────────────────────────────────── */
+
+.sefer-section-title {
+  text-align: center;
+  font-weight: 700;
+  font-size: 1rem;
+  margin: 0.5rem 0 0.4rem;
+  line-height: 1.5;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.35rem;
+  direction: rtl;
+}
+.sefer-chapter-header {
+  font-size: 1.1rem;
+  color: #5c3d12;
+  border-top: 1px solid rgba(196,164,74,0.4);
+  border-bottom: 1px solid rgba(196,164,74,0.4);
+  padding: 0.3rem 1rem;
+  margin: 0.6rem 0;
+  justify-content: center;
+}
+.sefer-section-num { font-size: 0.85rem; color: #8a6d2a; flex-shrink: 0; }
+.sefer-body-text {
+  font-size: 0.93rem;
+  line-height: 1.8;
+  direction: rtl;
+  text-align: justify;
+  margin: 0.25rem 0 0.5rem;
+}
+.sefer-para { margin: 0 0 0.45em; }
+.sefer-para:last-child { margin-bottom: 0; }
+
+/* ─── Diamond Separator ─────────────────────────────────────────────────── */
+
+.sefer-separator { display: flex; align-items: center; gap: 0.4rem; margin: 0.65rem 0 0.45rem; }
+.sefer-sep-line { flex: 1; height: 1px; background: #c4a44a; }
+.sefer-sep-diamond { color: #b8963e; font-size: 0.6rem; line-height: 1; flex-shrink: 0; }
+
+/* ─── Source Columns ────────────────────────────────────────────────────── */
+
+.sefer-columns-area { direction: rtl; }
+.sefer-col-headers-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+.sefer-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 2px 6px;
+  background: rgba(196,164,74,0.08);
+  border: 1px solid rgba(196,164,74,0.28);
+  font-size: 0.72rem;
+  direction: rtl;
+}
+.sefer-col-title { font-weight: 700; font-size: 0.74rem; color: #5c3d12; }
+.sefer-col-ornament { color: #c4a44a; font-size: 0.62rem; }
+.sefer-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border-top: 1px solid rgba(196,164,74,0.45);
+}
+.sefer-col {
+  font-size: 0.76rem;
+  line-height: 1.65;
+  direction: rtl;
+  text-align: justify;
+  word-break: break-word;
+  padding: 0.4rem 0.5rem;
+}
+.sefer-col-makor { border-left: 1px solid rgba(196,164,74,0.35); }
+.sefer-col-overflow {
+  font-size: 0.76rem;
+  line-height: 1.65;
+  direction: rtl;
+  text-align: justify;
+  word-break: break-word;
+  padding: 0.4rem 0.5rem;
+  border-top: 1px solid rgba(196,164,74,0.3);
+}
+
+/* ─── Keyboard Hint ─────────────────────────────────────────────────────── */
+
+.sefer-kbd-hint {
+  margin-top: 0.85rem;
+  font-size: 0.68rem;
+  color: #5a4a2a;
+  text-align: center;
+  direction: rtl;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SEFER PRINT PAGE  (/sefer/print)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.sefer-print-shell {
+  background: #1e140c;
+  min-height: 100vh;
+  padding-top: 56px;
+  font-family: var(--font-frank), 'Frank Ruhl Libre', Georgia, serif;
+}
+
+.sefer-print-controls {
+  position: fixed;
+  top: 0;
+  inset-inline-start: 0;
+  inset-inline-end: 0;
+  z-index: 200;
+  height: 48px;
+  background: rgba(20,12,6,0.97);
+  border-bottom: 1px solid rgba(196,164,74,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.25rem;
+  gap: 1rem;
+  direction: rtl;
+}
+
+.sefer-print-back { color: #d4c48c; text-decoration: none; font-size: 0.82rem; flex-shrink: 0; opacity: 0.7; transition: opacity 0.15s; }
+.sefer-print-back:hover { opacity: 1; }
+.sefer-print-book-title { color: #e8dbb4; font-size: 0.9rem; font-weight: 700; flex: 1; text-align: center; }
+.sefer-print-page-count { font-weight: 400; font-size: 0.78rem; color: #8a7a5a; }
+
+.sefer-print-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
+
+.sefer-print-action-btn {
+  padding: 5px 14px;
+  border-radius: 5px;
+  font-size: 0.8rem;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  border: none;
+  transition: opacity 0.15s;
+}
+.sefer-print-action-btn:hover { opacity: 0.85; }
+.sefer-pdf-btn { background: #b8963e; color: #18100a; font-weight: 700; }
+.sefer-print-trigger-btn {
+  background: rgba(196,164,74,0.15);
+  color: #d4c48c;
+  border: 1px solid rgba(196,164,74,0.35) !important;
+}
+
+.sefer-all-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2rem;
+  padding: 2rem 1rem 4rem;
+}
+
+.sefer-print-page {
+  width: 496px;
+  min-height: 681px;
+}
+
+.sefer-print-status {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c4a44a;
+  font-size: 1.1rem;
+  font-family: var(--font-frank), serif;
+}
+.sefer-print-error-msg { color: #c0392b; }
+
+/* ─── Print Media ─────────────────────────────────────────────────────────── */
+
+@media print {
+  @page {
+    size: 170mm 240mm;
+    margin: 18mm 15mm 20mm 15mm;
+  }
+
+  .sefer-print-shell {
+    background: white !important;
+    padding-top: 0 !important;
+  }
+
+  .no-print,
+  .sefer-print-controls { display: none !important; }
+
+  .sefer-all-pages { gap: 0; padding: 0; display: block; }
+
+  .sefer-print-page {
+    width: 100% !important;
+    min-height: 0 !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .sefer-print-page:last-child {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
