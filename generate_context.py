@@ -409,28 +409,22 @@ def merge_pdfs(pdfs: list, out: Path):
 
 def _run_solver(data: dict, font_body: str = '', font_col: str = '') -> list:
     """Run the PageSolver on unpaginated input data and return a list of page dicts."""
-    import importlib.util, sys as _sys
+    import sys as _sys
 
-    # Support running from repo root where engine/ is a subdirectory (not installed package)
+    # Ensure engine/ is importable from repo root
     engine_dir = str(BASE_DIR)
     if engine_dir not in _sys.path:
         _sys.path.insert(0, engine_dir)
 
-    from engine.solver import PageSolver, SolverConfig
-    from engine.measure import FontConfig, PageMeasurer
+    from engine.solver import PageSolver
+    from engine.overrides import OverrideManager
 
-    if font_body:
-        font_config = FontConfig.from_paths(
-            body_path=font_body,
-            column_path=font_col or font_body,
-        )
-        measurer = PageMeasurer(font_config)
-    else:
-        # No font paths provided — use fallback character-count estimator
-        measurer = None
-
-    solver = PageSolver(data, SolverConfig(), measurer=measurer)
-    return solver.solve()
+    # font_body / font_col are accepted for CLI compatibility but the v2
+    # TextMeasurer loads fonts automatically from its configured paths.
+    overrides_path = BASE_DIR / 'content' / 'overrides.json'
+    overrides = OverrideManager(str(overrides_path) if overrides_path.exists() else None)
+    solver = PageSolver(overrides=overrides)
+    return solver.solve_book(data)
 
 
 # ─── Main pipeline ────────────────────────────────────────────────

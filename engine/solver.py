@@ -226,6 +226,10 @@ class PageSolver:
                 "makor_text": "",
                 "tzinor_title": "צינור השפע",
                 "tzinor_text": "",
+                # Chapter boundary fields (populated below when section is placed)
+                "chapter_start": "",
+                "chapter_title": "",
+                "chapter_end": False,
             }
 
             avail = TOTAL_HEIGHT_PT - HEADER_HEIGHT_PT - extra_leading
@@ -265,11 +269,18 @@ class PageSolver:
 
                 if not section_title_placed:
                     title_ht = BASELINESKIP_PT + BLANK_SMALL_PT
-                    if avail > min_reserve + title_ht:
+                    # Sub-header anchoring: require room for title + ≥2 body lines
+                    # so the title never strands at the bottom of a page alone.
+                    min_anchor_ht = title_ht + BASELINESKIP_PT * 2
+                    if avail > min_reserve + min_anchor_ht:
                         page["section_title"] = current_section.get('title', '')
                         page["section_number"] = current_section.get('number', '')
                         avail -= title_ht
                         section_title_placed = True
+                        # Chapter opener: propagate chapter fields to this page
+                        if current_section.get('chapter'):
+                            page["chapter_start"] = current_section['chapter']
+                            page["chapter_title"] = current_section.get('chapter_title', '')
 
                 if section_title_placed and remaining_section_text.strip():
                     max_sec_ht = avail - min_reserve
@@ -281,6 +292,9 @@ class PageSolver:
                         avail -= sec_ht
 
                 if not remaining_section_text.strip():
+                    # Chapter end: mark page when this section closes a chapter
+                    if current_section and current_section.get('chapter_end'):
+                        page["chapter_end"] = True
                     current_section = None
 
             elif remaining_section_text.strip() and not remaining_main.strip():
@@ -297,6 +311,8 @@ class PageSolver:
                     sec_ht = self.body_measurer.measure_height(sec_fit) + BLANK_MEDIUM_PT
                     avail -= sec_ht
                 if not remaining_section_text.strip():
+                    if current_section and current_section.get('chapter_end'):
+                        page["chapter_end"] = True
                     current_section = None
 
             # ─── 3. Separator + column headers ──────────────────
