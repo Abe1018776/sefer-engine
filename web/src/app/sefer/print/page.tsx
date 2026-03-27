@@ -36,20 +36,18 @@ function renderText(text: string) {
 
 function PageHeader({ header }: { header: SeferPage['header'] }) {
   return (
-    <div className="sefer-header">
-      <span className="sefer-header-num">{header.right}</span>
-      <div className="sefer-header-rule" />
-      <span className="sefer-header-word">{header.centerRight}</span>
-      <div className="sefer-header-rule" />
+    <div className="sefer-header" dir="rtl">
+      <div className="sefer-header-end">
+        <span className="sefer-header-num">{header.right}</span>
+        <span className="sefer-header-title">{header.centerRight}</span>
+      </div>
       {header.centerLeft && (
-        <>
-          <span className="sefer-header-gate">{header.centerLeft}</span>
-          <div className="sefer-header-rule" />
-        </>
+        <span className="sefer-header-gate">{header.centerLeft}</span>
       )}
-      <span className="sefer-header-word">{header.left}</span>
-      <div className="sefer-header-rule" />
-      <span className="sefer-header-num">{header.right}</span>
+      <div className="sefer-header-end">
+        <span className="sefer-header-title">{header.left}</span>
+        <span className="sefer-header-num">{header.right}</span>
+      </div>
     </div>
   );
 }
@@ -60,16 +58,6 @@ function Separator() {
       <div className="sefer-sep-line" />
       <span className="sefer-sep-diamond">◆</span>
       <div className="sefer-sep-line" />
-    </div>
-  );
-}
-
-function ColHeader({ title }: { title: string }) {
-  return (
-    <div className="sefer-col-header">
-      <span className="sefer-col-ornament">— ✦</span>
-      <span className="sefer-col-title">{title}</span>
-      <span className="sefer-col-ornament">✦ —</span>
     </div>
   );
 }
@@ -101,12 +89,14 @@ function SeferPageView({ page }: { page: SeferPage }) {
         <>
           <Separator />
           <div className="sefer-columns-area">
-            <div className="sefer-col-headers-row">
-              <ColHeader title={page.makorTitle} />
-              <ColHeader title={page.tzinorTitle} />
+            <div className="sefer-col-title-row">
+              <span className="sefer-col-title">{page.makorTitle}</span>
+              <span className="sefer-col-title-sep">◆</span>
+              <span className="sefer-col-title">{page.tzinorTitle}</span>
             </div>
             <div className="sefer-columns">
               <div className="sefer-col sefer-col-makor">{renderText(makorNarrow)}</div>
+              <div className="sefer-col-divider-line" />
               <div className="sefer-col sefer-col-tzinor">{renderText(tzinorNarrow)}</div>
             </div>
             {overflowText && (
