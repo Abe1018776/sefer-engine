@@ -1,8 +1,85 @@
 # Sefer Engine — Web Viewer
 
-Next.js 15 app that pulls lesson content from Supabase and renders it as
-authentic paginated Hebrew sefer pages, with browser-based print and one-click
-PDF export via headless Playwright.
+Next.js 15 / React 19 app that pulls lesson content from Supabase, runs a
+TypeScript pagination algorithm, renders authentic paginated Hebrew sefer pages
+in the browser, and exports print-ready PDFs via headless Playwright.
+
+---
+
+## End-to-End Flow
+
+### 1. Interactive viewer (`/sefer`)
+
+```
+Browser loads /sefer
+  └─ SeferViewer mounts
+       ├─ fetchBooks()  →  GET /api/books  →  Supabase: SELECT * FROM books
+       ├─ fetchLessons() →  GET /api/lessons?book=1
+       │     Supabase: SELECT lessons + lesson_sources WHERE book_id = ?
+       │     Returns: lessons[] each with sources[] (primary + supporting)
+       │
+       ├─ assemblePaginatorInput(lessons)
+       │     Maps DB rows → PaginatorInput:
+       │       lesson.human_body        → section body text
+       │       lesson.section_heading   → section title
+       │       source_type='primary'    → makor entry (מקור השפע)
+       │       source_type='supporting' → tzinor entry (צינור השפע)
+       │
+       ├─ new Paginator(input).paginate()
+       │     For each section:
+       │       countLines(body, CHARS_PER_LINE)  → body line count
+       │       countLines(makor, COL_CHARS)       → makor line count
+       │       countLines(tzinor, COL_CHARS)      → tzinor line count
+       │       Pack into pages until BODY_LINES_PER_PAGE exceeded
+       │       splitLshape() when one column ≥ 1.55× the other:
+       │         narrow phase = shorter column height
+       │         overflow phase = remainder at full width (~half the lines)
+       │       Output: SeferPage[]
+       │
+       └─ Renders <SeferPageView page={pages[currentIndex]} />
+             RTL shell div (dir="rtl")
+             4-part header: right=page-num, center-right=שפע,
+                            center-left=gate-name, left=שלמה
+             ◆ diamond separator (CSS ::after)
+             Two-column layout (makor RIGHT | tzinor LEFT) or single-column
+             L-shape: if layout=makor_long → makor continues full-width below
+```
+
+### 2. Print page (`/sefer/print?book=1`)
+
+```
+Browser loads /sefer/print
+  └─ PrintContent mounts (same fetch + paginate as viewer)
+       ├─ Renders ALL pages in sequence as <div class="sefer-print-page">
+       ├─ @page CSS: size 170mm 240mm, margin 18/15/20/15mm
+       ├─ Each .sefer-print-page: break-after: page
+       ├─ Sets data-ready="true" on root div when paginator finishes
+       └─ User hits Ctrl+P → browser prints each div as one page
+```
+
+### 3. PDF API (`/api/sefer/pdf?book=1`)
+
+```
+GET /api/sefer/pdf?book=1
+  └─ route.ts (server-side, Node.js)
+       ├─ import { chromium } from 'playwright'
+       ├─ browser = await chromium.launch()
+       ├─ page = await browser.newPage()
+       ├─ await page.goto(`http://localhost:3000/sefer/print?book=1&headless=1`)
+       ├─ await page.waitForSelector('[data-ready="true"]', { timeout: 30000 })
+       │     (waits for paginator to finish rendering all pages)
+       ├─ pdf = await page.pdf({
+       │     width: '170mm', height: '240mm', printBackground: true,
+       │     margin: { top: 0, right: 0, bottom: 0, left: 0 }
+       │   })
+       ├─ await browser.close()
+       └─ return new NextResponse(pdf.buffer, {
+               'Content-Type': 'application/pdf',
+               'Content-Disposition': 'attachment; filename="sefer.pdf"'
+             })
+```
+
+---
 
 ## Quick Start
 
@@ -107,3 +184,22 @@ in the original שפע שלמה typography spec.
 The web viewer is the fastest path to a print-ready proof. For full
 typographic control (micro-typography, optical margins, widow/orphan rules)
 the ConTeXt backend (`../generate_context.py`) is the long-term target.
+
+---
+
+## Known Limitations vs ConTeXt Backend
+
+| Issue | Web viewer | ConTeXt |
+|-------|-----------|---------|
+| Text measurement | Character-count estimate — can be off by 2–4 lines per column | Two-pass: TeX measures actual vbox heights via `\write` |
+| Line breaking | CSS `text-align: justify` — no micro-typography | `hz,hanging`: character protrusion + font expansion |
+| Column L-shape accuracy | Estimate-based split point — may overflow gutter or leave gap | Split based on measured heights → exact |
+| Widow/orphan control | None — `break-after: page` is a hard cut | `\widowpenalty`, `\clubpenalty`, solver Phase 2 refinement |
+| BiDi edge cases | Unicode BiDi works for most cases; no override mechanism | Explicit `\setupalign[r2l]` + bracket-swap escaping in `escape_tex()` |
+| Font embedding | Chromium screen renderer; not PDF/X compliant | Full font subsetting, press-ready PDF |
+| Chapter banners | Not implemented | ✅ MetaPost double-border frame + nikudded title |
+| Chapter-end ornament | Not implemented | ✅ ✿ + intentional whitespace |
+| Sub-header anchoring | Not enforced | ✅ Solver defers title unless ≥2 body lines follow |
+
+The web viewer is the right tool for fast layout proofs and content review.
+Run the ConTeXt pipeline (`python generate_context.py`) for final press output.
